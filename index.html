@@ -1,0 +1,894 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="theme-color" content="#0d1b2a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>ON Engenharia · Campo</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  :root {
+    --azul-escuro: #1D3140;
+    --azul-medio: #162738;
+    --azul-card: #1f3850;
+    --azul-eletrico: #64ABDE;
+    --azul-claro: #84c3ef;
+    --branco: #ffffff;
+    --cinza-claro: #e8f4fd;
+    --cinza-texto: #7aaac8;
+    --danger: #e05c5c;
+    --success: #3fd48a;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--azul-escuro);
+    color: var(--branco);
+    min-height: 100vh;
+  }
+
+  /* ── HEADER ── */
+  header {
+    background: var(--azul-escuro);
+    padding: 14px 18px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 2px solid var(--azul-eletrico);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  /* Logo ON recriada em SVG inline */
+  .logo-svg {
+    height: 48px;
+    width: auto;
+    flex-shrink: 0;
+    object-fit: contain;
+  }
+  .logo-text h1 {
+    font-size: 1rem;
+    font-weight: 800;
+    color: var(--branco);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    line-height: 1;
+  }
+  .logo-text span {
+    font-size: 0.62rem;
+    color: var(--azul-eletrico);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    font-weight: 600;
+  }
+  .badge-count {
+    background: var(--azul-eletrico);
+    color: var(--azul-escuro);
+    border-radius: 20px;
+    padding: 5px 14px;
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+  }
+
+  /* ── NAV ── */
+  nav {
+    display: flex;
+    background: var(--azul-medio);
+    border-bottom: 1px solid rgba(63,169,245,0.15);
+  }
+  nav button {
+    flex: 1;
+    padding: 11px 6px 9px;
+    background: none;
+    border: none;
+    color: var(--cinza-texto);
+    font-size: 0.65rem;
+    font-weight: 700;
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    transition: all 0.2s;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-family: inherit;
+  }
+  nav button.active {
+    color: var(--azul-eletrico);
+    border-bottom-color: var(--azul-eletrico);
+  }
+  nav button .nav-icon { font-size: 1.15rem; display: block; margin-bottom: 3px; }
+
+  /* ── PAGES ── */
+  .page { display: none; background: var(--azul-escuro); min-height: calc(100vh - 116px); padding-bottom: 24px; }
+  .page.active { display: block; }
+
+  /* ── CARD ── */
+  .card {
+    background: var(--azul-card);
+    margin: 12px;
+    border-radius: 12px;
+    padding: 16px;
+    border: 1px solid rgba(63,169,245,0.12);
+  }
+  .card h3 {
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--azul-eletrico);
+    margin-bottom: 14px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+
+  /* ── FORM ── */
+  label {
+    display: block;
+    font-size: 0.73rem;
+    color: var(--cinza-texto);
+    margin-bottom: 5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+  }
+  input[type=text], textarea, select {
+    width: 100%;
+    padding: 11px 14px;
+    border: 1.5px solid rgba(63,169,245,0.2);
+    border-radius: 8px;
+    font-size: 0.9rem;
+    background: rgba(255,255,255,0.05);
+    color: var(--branco);
+    font-family: inherit;
+    transition: border-color 0.2s;
+    margin-bottom: 14px;
+  }
+  input[type=text]:focus, textarea:focus, select:focus {
+    outline: none;
+    border-color: var(--azul-eletrico);
+    background: rgba(63,169,245,0.07);
+  }
+  select option { background: var(--azul-card); color: var(--branco); }
+  textarea { resize: vertical; min-height: 80px; }
+  ::placeholder { color: rgba(139,175,200,0.5); }
+
+  /* ── BUTTONS ── */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 18px;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.18s;
+    font-family: inherit;
+    letter-spacing: 0.3px;
+  }
+  .btn-primary {
+    background: var(--azul-eletrico);
+    color: var(--azul-escuro);
+    width: 100%;
+    justify-content: center;
+    padding: 14px;
+    font-size: 0.95rem;
+    letter-spacing: 0.5px;
+  }
+  .btn-primary:active { filter: brightness(0.85); }
+  .btn-secondary {
+    background: rgba(255,255,255,0.07);
+    color: var(--branco);
+    border: 1.5px solid rgba(63,169,245,0.25);
+  }
+  .btn-secondary:active { background: rgba(63,169,245,0.15); }
+  .btn-danger { background: var(--danger); color: white; }
+  .btn-outline {
+    background: transparent;
+    border: 1.5px solid rgba(63,169,245,0.3);
+    color: var(--azul-eletrico);
+    width: 100%;
+    justify-content: center;
+    font-size: 0.82rem;
+  }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+  /* ── GPS ── */
+  .coords-box {
+    background: rgba(0,0,0,0.3);
+    border-radius: 8px;
+    padding: 12px 14px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.82rem;
+    margin-bottom: 12px;
+    min-height: 46px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border: 1.5px solid rgba(63,169,245,0.1);
+    color: var(--cinza-texto);
+  }
+  .coords-box.success { border-color: var(--success); color: var(--branco); }
+  .coords-box.error { border-color: var(--danger); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: #444; flex-shrink: 0; }
+  .dot.green { background: var(--success); animation: pulse 1.5s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.35} }
+
+  .map-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 9px 14px;
+    background: rgba(63,169,245,0.1);
+    border: 1.5px solid rgba(63,169,245,0.3);
+    border-radius: 8px;
+    color: var(--azul-eletrico);
+    font-weight: 700;
+    font-size: 0.82rem;
+    text-decoration: none;
+    margin-top: 8px;
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* ── PHOTOS ── */
+  .photo-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
+  .photo-thumb { aspect-ratio: 1; border-radius: 8px; overflow: hidden; position: relative; }
+  .photo-thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .del-photo {
+    position: absolute;
+    top: 3px; right: 3px;
+    background: rgba(0,0,0,0.65);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 22px; height: 22px;
+    font-size: 13px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .add-photo-btn {
+    aspect-ratio: 1;
+    border-radius: 8px;
+    border: 2px dashed rgba(63,169,245,0.3);
+    background: rgba(63,169,245,0.05);
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.4rem;
+    color: var(--azul-eletrico);
+    gap: 3px;
+    transition: background 0.2s;
+  }
+  .add-photo-btn:active { background: rgba(63,169,245,0.1); }
+  .add-photo-btn span { font-size: 0.62rem; color: var(--cinza-texto); letter-spacing: 0.5px; font-weight: 600; }
+
+  /* ── AUDIO ── */
+  .rec-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .rec-timer { font-family: monospace; font-size: 1.1rem; color: var(--danger); font-weight: 700; display: none; }
+  .rec-timer.visible { display: block; }
+  audio { width: 100%; margin-top: 6px; border-radius: 6px; }
+  .audio-item {
+    background: rgba(0,0,0,0.25);
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-top: 8px;
+    border: 1px solid rgba(63,169,245,0.12);
+  }
+  .audio-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+  .audio-label { font-size: 0.73rem; font-weight: 700; color: var(--azul-eletrico); text-transform: uppercase; letter-spacing: 0.5px; }
+
+  /* ── LISTA ── */
+  .ponto-card {
+    margin: 12px;
+    border-radius: 12px;
+    padding: 14px 16px;
+    background: var(--azul-card);
+    border: 1px solid rgba(63,169,245,0.12);
+    border-left: 4px solid var(--azul-eletrico);
+  }
+  .ponto-id { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 2px; color: var(--azul-eletrico); font-weight: 700; margin-bottom: 2px; }
+  .ponto-nome { font-size: 1rem; font-weight: 800; color: var(--branco); margin-bottom: 3px; }
+  .ponto-coords { font-size: 0.71rem; font-family: monospace; color: var(--cinza-texto); }
+  .ponto-desc { font-size: 0.8rem; color: rgba(255,255,255,0.6); margin-top: 6px; line-height: 1.5; }
+  .ponto-meta { display: flex; gap: 12px; margin-top: 8px; font-size: 0.72rem; color: var(--cinza-texto); flex-wrap: wrap; }
+  .ponto-meta span { display: flex; align-items: center; gap: 4px; }
+  .ponto-actions { display: flex; gap: 8px; margin-top: 10px; }
+
+  /* ── EXPORT ── */
+  .export-hero {
+    text-align: center;
+    padding: 20px 0 14px;
+  }
+  .export-hero .big-num {
+    font-size: 4rem;
+    font-weight: 900;
+    color: var(--azul-eletrico);
+    line-height: 1;
+    letter-spacing: -2px;
+  }
+  .export-hero p { color: var(--cinza-texto); font-size: 0.82rem; margin-top: 4px; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; }
+  .struct-preview {
+    background: rgba(0,0,0,0.4);
+    border: 1px solid rgba(63,169,245,0.15);
+    color: #5bc3ff;
+    border-radius: 8px;
+    padding: 14px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.72rem;
+    line-height: 1.8;
+    margin-bottom: 14px;
+    white-space: pre;
+  }
+
+  /* ── EMPTY ── */
+  .empty { text-align: center; padding: 60px 24px; color: var(--cinza-texto); }
+  .empty .icon { font-size: 3rem; margin-bottom: 14px; opacity: 0.5; }
+  .empty p { font-size: 0.88rem; line-height: 1.6; }
+
+  /* ── MISC ── */
+  .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .divider { border: none; border-top: 1px solid rgba(63,169,245,0.1); margin: 4px 0 14px; }
+  .tag {
+    display: inline-block;
+    background: rgba(63,169,245,0.12);
+    color: var(--azul-eletrico);
+    border-radius: 20px;
+    padding: 3px 10px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    margin-bottom: 12px;
+  }
+
+  /* ── TOAST ── */
+  .toast {
+    position: fixed;
+    bottom: 28px;
+    left: 50%;
+    transform: translateX(-50%) translateY(120px);
+    background: var(--azul-medio);
+    color: white;
+    padding: 12px 26px;
+    border-radius: 30px;
+    font-size: 0.84rem;
+    font-weight: 700;
+    z-index: 999;
+    transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1);
+    border: 1.5px solid var(--azul-eletrico);
+    white-space: nowrap;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  .spinner {
+    width: 18px; height: 18px;
+    border: 2.5px solid rgba(13,27,42,0.4);
+    border-top-color: var(--azul-escuro);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    display: inline-block;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .offline-bar {
+    background: #b45309;
+    color: white;
+    text-align: center;
+    font-size: 0.73rem;
+    padding: 5px;
+    display: none;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+  }
+  .offline-bar.show { display: block; }
+</style>
+</head>
+<body>
+
+<div class="offline-bar" id="offlineBar">📴 OFFLINE — Dados salvos localmente no dispositivo</div>
+
+<header>
+  <div class="logo">
+    <img src="data:image/png;base64,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" class="logo-svg" alt="ON Engenharia">
+    <div class="logo-text">
+      <h1>ON Engenharia</h1>
+      <span>Coleta de Campo</span>
+    </div>
+  </div>
+  <div class="badge-count" id="headerCount">0 pontos</div>
+</header>
+
+<nav>
+  <button class="active" onclick="showPage('novo', this)">
+    <span class="nav-icon">➕</span>Novo Ponto
+  </button>
+  <button onclick="showPage('lista', this)">
+    <span class="nav-icon">📋</span>Registros
+  </button>
+  <button onclick="showPage('exportar', this)">
+    <span class="nav-icon">📦</span>Exportar
+  </button>
+</nav>
+
+<!-- ═══════════ NOVO ═══════════ -->
+<div class="page active" id="page-novo">
+
+  <div class="card">
+    <h3>🛰️ Localização GPS</h3>
+    <div class="coords-box" id="coordsBox">
+      <div class="dot" id="gpsDot"></div>
+      <span id="coordsText">Aguardando sinal GPS...</span>
+    </div>
+    <button class="btn btn-primary" onclick="getGPS()" style="margin-bottom:8px">📍 Capturar Coordenadas</button>
+    <a id="mapLink" class="map-link" target="_blank" style="display:none">🗺️ Visualizar no Google Maps</a>
+    <div id="manualCoords" style="margin-top:12px;display:none">
+      <hr class="divider">
+      <label>Inserir manualmente (lat, long)</label>
+      <input type="text" id="manualLatLng" placeholder="-23.550520, -46.633309">
+      <button class="btn btn-secondary" onclick="useManual()" style="width:100%">✔ Confirmar Coordenadas</button>
+    </div>
+    <button class="btn btn-outline" style="margin-top:8px" onclick="toggleManual()">✏️ Inserir coordenadas manualmente</button>
+  </div>
+
+  <div class="card">
+    <h3>📝 Dados do Ponto</h3>
+    <label>Nome / Identificação</label>
+    <input type="text" id="ptNome" placeholder="Ex: PT-001 / Poste KM 12 / Torre A">
+    <label>Categoria</label>
+    <select id="ptCategoria">
+      <option>Inspeção</option>
+      <option>Rede de Distribuição</option>
+      <option>Subestação</option>
+      <option>Energia Solar</option>
+      <option>Loteamento Urbano</option>
+      <option>Ocorrência</option>
+      <option>Estrutura</option>
+      <option>Outro</option>
+    </select>
+    <label>Descrição / Observações</label>
+    <textarea id="ptDesc" placeholder="Descreva o ponto: condições, medições, anomalias, referências..."></textarea>
+  </div>
+
+  <div class="card">
+    <h3>📸 Registros Fotográficos</h3>
+    <input type="file" id="fileInput" accept="image/*" multiple capture="environment" style="display:none" onchange="addPhotos(event)">
+    <input type="file" id="fileInputGal" accept="image/*" multiple style="display:none" onchange="addPhotos(event)">
+    <div class="photo-grid" id="photoGrid">
+      <button class="add-photo-btn" onclick="document.getElementById('fileInput').click()">
+        📷<span>Câmera</span>
+      </button>
+    </div>
+    <div class="row-2" style="margin-top:10px">
+      <button class="btn btn-secondary" onclick="document.getElementById('fileInput').click()">📷 Câmera</button>
+      <button class="btn btn-secondary" onclick="document.getElementById('fileInputGal').click()">🖼️ Galeria</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>🎙️ Áudio / Notas de Voz</h3>
+    <div class="rec-bar">
+      <button class="btn btn-secondary" id="btnRec" onclick="toggleRec()">🔴 Iniciar Gravação</button>
+      <div class="rec-timer" id="recTimer">00:00</div>
+    </div>
+    <div id="audioList"></div>
+  </div>
+
+  <div style="padding: 0 12px 16px">
+    <button class="btn btn-primary" onclick="salvarPonto()">
+      💾 &nbsp;SALVAR PONTO
+    </button>
+  </div>
+</div>
+
+<!-- ═══════════ LISTA ═══════════ -->
+<div class="page" id="page-lista">
+  <div id="listaContent"></div>
+</div>
+
+<!-- ═══════════ EXPORTAR ═══════════ -->
+<div class="page" id="page-exportar">
+  <div class="card">
+    <h3>📦 Exportar Relatório</h3>
+    <div class="export-hero">
+      <div class="big-num" id="exportCount">0</div>
+      <p>pontos registrados</p>
+    </div>
+    <div class="struct-preview" id="zipPreview">campo_on_export/
+├── dados.json
+├── relatorio.txt
+└── pontos/
+    └── (seus pontos aparecerão aqui)</div>
+    <button class="btn btn-primary" onclick="exportarZIP()" id="btnExport">
+      📦 &nbsp;GERAR E BAIXAR ZIP
+    </button>
+    <p style="text-align:center;font-size:0.73rem;color:var(--cinza-texto);margin-top:10px;line-height:1.6">
+      Arquivo ZIP com JSON estruturado, relatório TXT<br>e todas as fotos e áudios organizados por ponto.
+    </p>
+  </div>
+
+  <div class="card">
+    <h3>⚙️ Outras Opções</h3>
+    <button class="btn btn-secondary" style="width:100%;margin-bottom:10px;justify-content:center" onclick="exportarJSON()">
+      📄 &nbsp;Exportar somente JSON
+    </button>
+    <button class="btn btn-danger" style="width:100%;justify-content:center" onclick="limparTudo()">
+      🗑️ &nbsp;Apagar todos os pontos
+    </button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ══════════════ ESTADO ══════════════
+let pontos = JSON.parse(localStorage.getItem('oneng_pontos') || '[]');
+let currentPhotos = [];
+let currentAudios = [];
+let currentCoords = null;
+let mediaRecorder = null;
+let recChunks = [];
+let recInterval = null;
+let recSeconds = 0;
+
+function salvar() {
+  localStorage.setItem('oneng_pontos', JSON.stringify(pontos));
+  atualizarContador();
+}
+function atualizarContador() {
+  const n = pontos.length;
+  document.getElementById('headerCount').textContent = n + (n === 1 ? ' ponto' : ' pontos');
+  document.getElementById('exportCount').textContent = n;
+}
+
+// ══════════════ NAV ══════════════
+function showPage(id, btn) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById('page-' + id).classList.add('active');
+  if (btn) btn.classList.add('active');
+  if (id === 'lista') renderLista();
+  if (id === 'exportar') renderExportPreview();
+}
+
+// ══════════════ GPS ══════════════
+function getGPS() {
+  const txt = document.getElementById('coordsText');
+  const dot = document.getElementById('gpsDot');
+  const box = document.getElementById('coordsBox');
+  txt.textContent = 'Localizando...';
+  dot.className = 'dot';
+  box.className = 'coords-box';
+
+  if (!navigator.geolocation) {
+    txt.textContent = '❌ GPS não disponível neste dispositivo';
+    box.className = 'coords-box error';
+    document.getElementById('manualCoords').style.display = 'block';
+    return;
+  }
+  navigator.geolocation.getCurrentPosition(pos => {
+    const lat = pos.coords.latitude.toFixed(7);
+    const lng = pos.coords.longitude.toFixed(7);
+    const acc = pos.coords.accuracy.toFixed(0);
+    currentCoords = { lat: parseFloat(lat), lng: parseFloat(lng) };
+    txt.textContent = `${lat}, ${lng}  (±${acc}m)`;
+    box.className = 'coords-box success';
+    dot.className = 'dot green';
+    const lnk = document.getElementById('mapLink');
+    lnk.href = `https://www.google.com/maps?q=${lat},${lng}`;
+    lnk.style.display = 'flex';
+    toast('📍 GPS capturado com sucesso!');
+  }, err => {
+    txt.textContent = '❌ ' + (err.code === 1 ? 'Permissão de localização negada' : 'Falha ao obter GPS');
+    box.className = 'coords-box error';
+    document.getElementById('manualCoords').style.display = 'block';
+    toast('Ative a localização e tente novamente', true);
+  }, { enableHighAccuracy: true, timeout: 15000 });
+}
+
+function toggleManual() {
+  const el = document.getElementById('manualCoords');
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+function useManual() {
+  const val = document.getElementById('manualLatLng').value.trim();
+  const parts = val.split(',');
+  if (parts.length !== 2) { toast('Use o formato: -23.5505, -46.6333', true); return; }
+  const lat = parseFloat(parts[0]), lng = parseFloat(parts[1]);
+  if (isNaN(lat) || isNaN(lng)) { toast('Coordenadas inválidas', true); return; }
+  currentCoords = { lat, lng };
+  document.getElementById('coordsText').textContent = `${lat.toFixed(7)}, ${lng.toFixed(7)}  (manual)`;
+  document.getElementById('coordsBox').className = 'coords-box success';
+  document.getElementById('gpsDot').className = 'dot green';
+  const lnk = document.getElementById('mapLink');
+  lnk.href = `https://www.google.com/maps?q=${lat},${lng}`;
+  lnk.style.display = 'flex';
+  toast('Coordenadas registradas!');
+}
+
+// ══════════════ FOTOS ══════════════
+function addPhotos(event) {
+  Array.from(event.target.files).forEach(file => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      currentPhotos.push({ dataUrl: e.target.result, name: `foto_${Date.now()}_${Math.random().toString(36).substr(2,5)}.jpg` });
+      renderPhotoGrid();
+    };
+    reader.readAsDataURL(file);
+  });
+  event.target.value = '';
+}
+function renderPhotoGrid() {
+  const grid = document.getElementById('photoGrid');
+  grid.innerHTML = '';
+  currentPhotos.forEach((p, i) => {
+    const div = document.createElement('div');
+    div.className = 'photo-thumb';
+    div.innerHTML = `<img src="${p.dataUrl}"><button class="del-photo" onclick="removePhoto(${i})">✕</button>`;
+    grid.appendChild(div);
+  });
+  const add = document.createElement('button');
+  add.className = 'add-photo-btn';
+  add.innerHTML = '📷<span>Adicionar</span>';
+  add.onclick = () => document.getElementById('fileInput').click();
+  grid.appendChild(add);
+}
+function removePhoto(i) { currentPhotos.splice(i, 1); renderPhotoGrid(); }
+
+// ══════════════ ÁUDIO ══════════════
+async function toggleRec() {
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    mediaRecorder.stop();
+    return;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    recChunks = [];
+    mediaRecorder = new MediaRecorder(stream);
+    mediaRecorder.ondataavailable = e => recChunks.push(e.data);
+    mediaRecorder.onstop = () => {
+      const blob = new Blob(recChunks, { type: 'audio/webm' });
+      const reader = new FileReader();
+      reader.onload = e => {
+        currentAudios.push({ dataUrl: e.target.result, name: `audio_${Date.now()}.webm`, duration: recSeconds });
+        renderAudios();
+      };
+      reader.readAsDataURL(blob);
+      stream.getTracks().forEach(t => t.stop());
+      clearInterval(recInterval);
+      document.getElementById('recTimer').classList.remove('visible');
+      document.getElementById('btnRec').textContent = '🔴 Iniciar Gravação';
+      recSeconds = 0;
+    };
+    mediaRecorder.start();
+    document.getElementById('recTimer').classList.add('visible');
+    document.getElementById('btnRec').textContent = '⏹ Parar Gravação';
+    recSeconds = 0;
+    recInterval = setInterval(() => {
+      recSeconds++;
+      const m = String(Math.floor(recSeconds/60)).padStart(2,'0');
+      const s = String(recSeconds%60).padStart(2,'0');
+      document.getElementById('recTimer').textContent = `${m}:${s}`;
+    }, 1000);
+  } catch(e) { toast('Permissão de microfone necessária', true); }
+}
+function renderAudios() {
+  const list = document.getElementById('audioList');
+  list.innerHTML = '';
+  currentAudios.forEach((a, i) => {
+    const m = String(Math.floor(a.duration/60)).padStart(2,'0');
+    const s = String(a.duration%60).padStart(2,'0');
+    const div = document.createElement('div');
+    div.className = 'audio-item';
+    div.innerHTML = `
+      <div class="audio-header">
+        <span class="audio-label">🎙️ Nota de Voz ${i+1} · ${m}:${s}</span>
+        <button class="btn btn-danger" style="padding:3px 9px;font-size:0.72rem" onclick="removeAudio(${i})">🗑️</button>
+      </div>
+      <audio controls src="${a.dataUrl}"></audio>`;
+    list.appendChild(div);
+  });
+}
+function removeAudio(i) { currentAudios.splice(i, 1); renderAudios(); }
+
+// ══════════════ SALVAR ══════════════
+function salvarPonto() {
+  const nome = document.getElementById('ptNome').value.trim();
+  if (!nome) { toast('Informe o nome ou ID do ponto', true); return; }
+  if (!currentCoords) { toast('Capture as coordenadas GPS antes de salvar', true); return; }
+
+  const ponto = {
+    id: 'PT' + String(pontos.length + 1).padStart(3, '0'),
+    nome,
+    categoria: document.getElementById('ptCategoria').value,
+    descricao: document.getElementById('ptDesc').value,
+    coords: { ...currentCoords },
+    fotos: [...currentPhotos],
+    audios: [...currentAudios],
+    timestamp: new Date().toISOString(),
+    dataFormatada: new Date().toLocaleString('pt-BR')
+  };
+
+  pontos.push(ponto);
+  salvar();
+
+  // Reset
+  document.getElementById('ptNome').value = '';
+  document.getElementById('ptDesc').value = '';
+  currentPhotos = []; currentAudios = []; currentCoords = null;
+  document.getElementById('photoGrid').innerHTML = '<button class="add-photo-btn" onclick="document.getElementById(\'fileInput\').click()">📷<span>Câmera</span></button>';
+  document.getElementById('audioList').innerHTML = '';
+  document.getElementById('coordsBox').className = 'coords-box';
+  document.getElementById('gpsDot').className = 'dot';
+  document.getElementById('coordsText').textContent = 'Aguardando sinal GPS...';
+  document.getElementById('mapLink').style.display = 'none';
+  document.getElementById('manualCoords').style.display = 'none';
+
+  toast(`✅ ${ponto.id} — ${ponto.nome} salvo!`);
+}
+
+// ══════════════ LISTA ══════════════
+function renderLista() {
+  const el = document.getElementById('listaContent');
+  if (!pontos.length) {
+    el.innerHTML = '<div class="empty"><div class="icon">📍</div><p>Nenhum ponto registrado ainda.<br>Vá em "Novo Ponto" para começar.</p></div>';
+    return;
+  }
+  el.innerHTML = pontos.slice().reverse().map((p, ri) => {
+    const i = pontos.length - 1 - ri;
+    return `<div class="ponto-card">
+      <div class="ponto-id">${p.id} · ${p.categoria}</div>
+      <div class="ponto-nome">${p.nome}</div>
+      <div class="ponto-coords">📍 ${p.coords.lat.toFixed(6)}, ${p.coords.lng.toFixed(6)}</div>
+      ${p.descricao ? `<div class="ponto-desc">${p.descricao.substring(0,140)}${p.descricao.length>140?'…':''}</div>` : ''}
+      <div class="ponto-meta">
+        <span>📸 ${p.fotos.length} foto${p.fotos.length!==1?'s':''}</span>
+        <span>🎙️ ${p.audios.length} áudio${p.audios.length!==1?'s':''}</span>
+        <span>🕐 ${p.dataFormatada}</span>
+      </div>
+      <div class="ponto-actions">
+        <a href="https://www.google.com/maps?q=${p.coords.lat},${p.coords.lng}" target="_blank" class="btn btn-secondary" style="flex:1;justify-content:center;font-size:0.78rem;text-decoration:none">🗺️ Maps</a>
+        <button class="btn btn-danger" style="flex:1;font-size:0.78rem" onclick="excluirPonto(${i})">🗑️ Excluir</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+function excluirPonto(i) {
+  if (!confirm(`Excluir ${pontos[i].id} — ${pontos[i].nome}?`)) return;
+  pontos.splice(i, 1); salvar(); renderLista(); toast('Ponto excluído');
+}
+
+// ══════════════ ZIP ══════════════
+function renderExportPreview() {
+  const el = document.getElementById('zipPreview');
+  if (!pontos.length) { el.textContent = 'Nenhum ponto registrado para exportar.'; return; }
+  let tree = 'campo_on_export/\n├── dados.json\n├── relatorio.txt\n└── pontos/\n';
+  pontos.forEach((p, i) => {
+    const last = i === pontos.length - 1;
+    const pre = last ? '    └── ' : '    ├── ';
+    const inn = last ? '        ' : '    │   ';
+    tree += `${pre}${p.id}_${p.nome.replace(/[^a-zA-Z0-9]/g,'_')}/\n`;
+    tree += `${inn}├── info.txt\n`;
+    if (p.fotos.length) tree += `${inn}├── fotos/  (${p.fotos.length} arq.)\n`;
+    if (p.audios.length) tree += `${inn}└── audios/  (${p.audios.length} arq.)\n`;
+  });
+  el.textContent = tree;
+}
+
+async function exportarZIP() {
+  if (!pontos.length) { toast('Nenhum ponto para exportar', true); return; }
+  const btn = document.getElementById('btnExport');
+  btn.innerHTML = '<div class="spinner"></div> &nbsp;Gerando ZIP...';
+  btn.disabled = true;
+  await new Promise(r => setTimeout(r, 60));
+  try {
+    const zip = new JSZip();
+    const root = zip.folder('campo_on_export');
+
+    // dados.json
+    root.file('dados.json', JSON.stringify(pontos.map(p => ({
+      id: p.id, nome: p.nome, categoria: p.categoria, descricao: p.descricao,
+      latitude: p.coords.lat, longitude: p.coords.lng,
+      google_maps: `https://www.google.com/maps?q=${p.coords.lat},${p.coords.lng}`,
+      fotos: p.fotos.map(f => f.name), audios: p.audios.map(a => a.name),
+      timestamp: p.timestamp, data: p.dataFormatada
+    })), null, 2));
+
+    // relatorio.txt
+    let rel = `ON ENGENHARIA — RELATÓRIO DE CAMPO\n`;
+    rel += `Gerado em: ${new Date().toLocaleString('pt-BR')}\n`;
+    rel += `Total de pontos: ${pontos.length}\n`;
+    rel += '═'.repeat(55) + '\n\n';
+    pontos.forEach(p => {
+      rel += `[${p.id}] ${p.nome}\n`;
+      rel += `Categoria  : ${p.categoria}\n`;
+      rel += `Data/Hora  : ${p.dataFormatada}\n`;
+      rel += `Latitude   : ${p.coords.lat}\n`;
+      rel += `Longitude  : ${p.coords.lng}\n`;
+      rel += `Google Maps: https://www.google.com/maps?q=${p.coords.lat},${p.coords.lng}\n`;
+      rel += `Descrição  :\n${p.descricao || '(sem descrição)'}\n`;
+      rel += `Fotos: ${p.fotos.length}  |  Áudios: ${p.audios.length}\n`;
+      rel += '─'.repeat(55) + '\n\n';
+    });
+    root.file('relatorio.txt', rel);
+
+    const pontosPasta = root.folder('pontos');
+    for (const p of pontos) {
+      const slug = p.id + '_' + p.nome.replace(/[^a-zA-Z0-9]/g,'_');
+      const pp = pontosPasta.folder(slug);
+      let info = `ON ENGENHARIA — DADOS DO PONTO\n${'─'.repeat(40)}\n`;
+      info += `ID         : ${p.id}\nNome       : ${p.nome}\nCategoria  : ${p.categoria}\n`;
+      info += `Data/Hora  : ${p.dataFormatada}\nLatitude   : ${p.coords.lat}\nLongitude  : ${p.coords.lng}\n`;
+      info += `Google Maps: https://www.google.com/maps?q=${p.coords.lat},${p.coords.lng}\n\n`;
+      info += `DESCRIÇÃO:\n${p.descricao || '(sem descrição)'}\n`;
+      pp.file('info.txt', info);
+      if (p.fotos.length) {
+        const fp = pp.folder('fotos');
+        p.fotos.forEach(f => fp.file(f.name, f.dataUrl.split(',')[1], { base64: true }));
+      }
+      if (p.audios.length) {
+        const ap = pp.folder('audios');
+        p.audios.forEach(a => ap.file(a.name, a.dataUrl.split(',')[1], { base64: true }));
+      }
+    }
+
+    const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `on_campo_${new Date().toISOString().slice(0,10)}.zip`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast('✅ ZIP gerado e baixado!');
+  } catch(e) {
+    toast('Erro ao gerar ZIP: ' + e.message, true);
+  }
+  btn.innerHTML = '📦 &nbsp;GERAR E BAIXAR ZIP';
+  btn.disabled = false;
+}
+
+function exportarJSON() {
+  const blob = new Blob([JSON.stringify(pontos, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `on_dados_${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+  toast('JSON exportado!');
+}
+
+function limparTudo() {
+  if (!confirm(`Apagar TODOS os ${pontos.length} pontos registrados?\nEsta ação não pode ser desfeita.`)) return;
+  pontos = []; salvar(); renderLista(); renderExportPreview(); toast('Todos os dados foram apagados');
+}
+
+// ══════════════ UTILS ══════════════
+let toastTm;
+function toast(msg, err = false) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.style.borderColor = err ? '#e05c5c' : 'var(--azul-eletrico)';
+  el.classList.add('show');
+  clearTimeout(toastTm);
+  toastTm = setTimeout(() => el.classList.remove('show'), 3200);
+}
+
+window.addEventListener('online', () => document.getElementById('offlineBar').classList.remove('show'));
+window.addEventListener('offline', () => document.getElementById('offlineBar').classList.add('show'));
+if (!navigator.onLine) document.getElementById('offlineBar').classList.add('show');
+
+atualizarContador();
+</script>
+</body>
+</html>
