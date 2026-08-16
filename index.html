@@ -665,7 +665,7 @@
     </div>
 
     <div style="padding: 0 12px 16px">
-      <button class="btn btn-primary" onclick="salvarPonto()">💾 &nbsp;SALVAR PONTO</button>
+      <button class="btn btn-primary" id="btnSalvarPonto" onclick="salvarPonto()">💾 &nbsp;SALVAR PONTO</button>
     </div>
   </div>
 
@@ -722,29 +722,135 @@
 <div class="toast" id="toast"></div>
 
 <script>
+// ══════════════ INDEXEDDB ══════════════
+const DB_NAME    = 'onEngenharia';
+const DB_VERSION = 1;
+let db = null;
+
+function abrirDB() {
+  return new Promise((resolve, reject) => {
+    if (db) { resolve(db); return; }
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = e => {
+      const d = e.target.result;
+      if (!d.objectStoreNames.contains('projetos'))
+        d.createObjectStore('projetos', { keyPath: 'id' });
+      if (!d.objectStoreNames.contains('pontos'))
+        d.createObjectStore('pontos',   { keyPath: 'id' });
+      if (!d.objectStoreNames.contains('arquivos'))
+        d.createObjectStore('arquivos', { keyPath: 'id' }); // id = "ptId_filename"
+    };
+    req.onsuccess = e => { db = e.target.result; resolve(db); };
+    req.onerror   = e => reject(e.target.error);
+  });
+}
+
+function dbGet(store, key) {
+  return new Promise((res, rej) => {
+    const tx = db.transaction(store, 'readonly');
+    const req = tx.objectStore(store).get(key);
+    req.onsuccess = () => res(req.result);
+    req.onerror   = e => rej(e.target.error);
+  });
+}
+function dbGetAll(store) {
+  return new Promise((res, rej) => {
+    const tx = db.transaction(store, 'readonly');
+    const req = tx.objectStore(store).getAll();
+    req.onsuccess = () => res(req.result);
+    req.onerror   = e => rej(e.target.error);
+  });
+}
+function dbPut(store, obj) {
+  return new Promise((res, rej) => {
+    const tx = db.transaction(store, 'readwrite');
+    const req = tx.objectStore(store).put(obj);
+    req.onsuccess = () => res();
+    req.onerror   = e => rej(e.target.error);
+  });
+}
+function dbDelete(store, key) {
+  return new Promise((res, rej) => {
+    const tx = db.transaction(store, 'readwrite');
+    const req = tx.objectStore(store).delete(key);
+    req.onsuccess = () => res();
+    req.onerror   = e => rej(e.target.error);
+  });
+}
+function dbDeleteAll(store) {
+  return new Promise((res, rej) => {
+    const tx = db.transaction(store, 'readwrite');
+    const req = tx.objectStore(store).clear();
+    req.onsuccess = () => res();
+    req.onerror   = e => rej(e.target.error);
+  });
+}
+// Deletar arquivos cujo id começa com prefix
+function dbDeletePrefix(store, prefix) {
+  return new Promise((res, rej) => {
+    const tx  = db.transaction(store, 'readwrite');
+    const os  = tx.objectStore(store);
+    const req = os.openCursor();
+    req.onsuccess = e => {
+      const cursor = e.target.result;
+      if (!cursor) { res(); return; }
+      if (cursor.key.startsWith(prefix)) cursor.delete();
+      cursor.continue();
+    };
+    req.onerror = e => rej(e.target.error);
+  });
+}
+
 // ══════════════ PROJETOS ══════════════
-let projetos = JSON.parse(localStorage.getItem('oneng_projetos') || '[]');
-let projetoAtual = null; // {id, cliente, nome, responsavel}
-let pontos = [];
+let projetos     = [];
+let projetoAtual = null;
+let pontos       = [];
 
-function salvarProjetos() {
-  localStorage.setItem('oneng_projetos', JSON.stringify(projetos));
+async function carregarProjetos() {
+  await abrirDB();
+  projetos = await dbGetAll('projetos');
+  projetos.sort((a, b) => a.criadoTs - b.criadoTs);
+  renderProjetos();
 }
 
-function chavepontos(projId) {
-  return 'oneng_pontos_' + projId;
+async function salvarProjeto(proj) {
+  await dbPut('projetos', proj);
 }
 
-function carregarPontos(projId) {
-  pontos = JSON.parse(localStorage.getItem(chavepontos(projId)) || '[]');
+async function carregarPontos(projId) {
+  await abrirDB();
+  const todos = await dbGetAll('pontos');
+  // Pontos deste projeto, sem os dataUrls (carregados sob demanda no ZIP)
+  pontos = todos
+    .filter(p => p.projId === projId)
+    .sort((a, b) => a.criadoTs - b.criadoTs);
 }
 
-function salvarPontosAtual() {
+async function salvarPontosAtual() {
   if (!projetoAtual) return;
-  localStorage.setItem(chavepontos(projetoAtual.id), JSON.stringify(pontos));
   atualizarContador();
 }
 
+// ══════════════ NAV ══════════════
+let mapaLeaflet = null;
+
+function showPage(id, btn) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById('page-' + id).classList.add('active');
+  if (btn) btn.classList.add('active');
+  if (id === 'lista')    renderLista();
+  if (id === 'exportar') renderExportPreview();
+  if (id === 'mapa')     renderMapa();
+}
+
+function atualizarContador() {
+  const n = pontos.length;
+  document.getElementById('headerCount').textContent = n + ' pt' + (n !== 1 ? 's' : '');
+  document.getElementById('exportCount').textContent = n;
+}
+
+// ══════════════ TELA INICIAL ══════════════
 function toggleNovoProj() {
   const form = document.getElementById('novoProjetoForm');
   const btn  = document.getElementById('toggleBtn');
@@ -754,7 +860,7 @@ function toggleNovoProj() {
 }
 
 function renderProjetos() {
-  const el = document.getElementById('projetosLista');
+  const el      = document.getElementById('projetosLista');
   const countEl = document.getElementById('projCount');
   const n = projetos.length;
   countEl.textContent = n + ' projeto' + (n !== 1 ? 's' : '');
@@ -764,33 +870,37 @@ function renderProjetos() {
       <div class="icon">📁</div>
       <p>Nenhum projeto criado ainda.<br>Toque em <b>Novo Projeto</b> abaixo para começar.</p>
     </div>`;
-    // Abrir painel automaticamente se não há projetos
     document.getElementById('novoProjetoForm').classList.add('open');
     document.getElementById('toggleBtn').classList.add('open');
     return;
   }
 
-  // Ordenar: mais recente primeiro (por índice)
+  // Contar pontos por projeto de forma assíncrona
   el.innerHTML = projetos.slice().reverse().map((p, ri) => {
     const i = projetos.length - 1 - ri;
-    const nPontos = JSON.parse(localStorage.getItem(chavepontos(p.id)) || '[]').length;
-    return `<div class="projeto-item" onclick="abrirProjeto(${i})">
+    return `<div class="projeto-item" onclick="abrirProjeto(${i})" id="proj-item-${p.id}">
       <div class="projeto-info">
         <div class="proj-cliente">${p.cliente}</div>
         <div class="proj-nome">${p.nome}</div>
-        <div class="proj-meta">
-          📍 ${nPontos} ponto${nPontos!==1?'s':''}
-          &nbsp;·&nbsp; 🗓️ ${p.criadoEm}
-        </div>
+        <div class="proj-meta" id="proj-meta-${p.id}">🗓️ ${p.criadoEm}</div>
       </div>
       <div class="projeto-acoes">
-        <button class="proj-del" title="Excluir projeto" onclick="event.stopPropagation();excluirProjeto(${i})">🗑️</button>
+        <button class="proj-del" title="Excluir projeto" onclick="event.stopPropagation();excluirProjeto('${p.id}')">🗑️</button>
       </div>
     </div>`;
   }).join('');
+
+  // Carregar contagem de pontos por projeto assincronamente
+  dbGetAll('pontos').then(todos => {
+    projetos.forEach(p => {
+      const n = todos.filter(pt => pt.projId === p.id).length;
+      const el = document.getElementById('proj-meta-' + p.id);
+      if (el) el.textContent = `📍 ${n} ponto${n!==1?'s':''} · 🗓️ ${p.criadoEm}`;
+    });
+  });
 }
 
-function criarProjeto() {
+async function criarProjeto() {
   const cliente = document.getElementById('novoCliente').value.trim();
   const nome    = document.getElementById('novoProjeto').value.trim();
   if (!cliente) { toast('Informe o nome do cliente', true); return; }
@@ -798,22 +908,23 @@ function criarProjeto() {
   const proj = {
     id: 'PRJ' + Date.now(),
     cliente, nome,
+    criadoTs: Date.now(),
     criadoEm: new Date().toLocaleString('pt-BR')
   };
+  await salvarProjeto(proj);
   projetos.push(proj);
-  salvarProjetos();
   document.getElementById('novoCliente').value = '';
   document.getElementById('novoProjeto').value = '';
   abrirProjeto(projetos.length - 1);
 }
 
-function abrirProjeto(i) {
+async function abrirProjeto(i) {
   projetoAtual = projetos[i];
-  carregarPontos(projetoAtual.id);
-  document.getElementById('headerCliente').textContent   = projetoAtual.cliente;
-  document.getElementById('headerProjNome').textContent  = projetoAtual.nome;
-  document.getElementById('tela-inicial').style.display  = 'none';
-  document.getElementById('app').style.display           = 'block';
+  await carregarPontos(projetoAtual.id);
+  document.getElementById('headerCliente').textContent  = projetoAtual.cliente;
+  document.getElementById('headerProjNome').textContent = projetoAtual.nome;
+  document.getElementById('tela-inicial').style.display = 'none';
+  document.getElementById('app').style.display          = 'block';
   atualizarContador();
   showPage('novo', document.querySelector('nav button'));
 }
@@ -826,117 +937,20 @@ function voltarInicio() {
   renderProjetos();
 }
 
-function excluirProjeto(i) {
-  const p = projetos[i];
-  if (!confirm(`Excluir projeto "${p.nome}" — ${p.cliente}?\nTodos os pontos serão apagados.`)) return;
-  localStorage.removeItem(chavepontos(p.id));
-  projetos.splice(i, 1);
-  salvarProjetos();
+async function excluirProjeto(projId) {
+  const p = projetos.find(x => x.id === projId);
+  if (!p) return;
+  if (!confirm(`Excluir projeto "${p.nome}" — ${p.cliente}?\nTodos os pontos e arquivos serão apagados.`)) return;
+  // Apagar pontos e arquivos deste projeto
+  const todos = await dbGetAll('pontos');
+  for (const pt of todos.filter(pt => pt.projId === projId)) {
+    await dbDeletePrefix('arquivos', pt.id + '_');
+    await dbDelete('pontos', pt.id);
+  }
+  await dbDelete('projetos', projId);
+  projetos = projetos.filter(x => x.id !== projId);
   renderProjetos();
   toast('Projeto excluído');
-}
-
-// ══════════════ NAV ══════════════
-let mapaLeaflet = null;
-
-function showPage(id, btn) {
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
-  document.getElementById('page-' + id).classList.add('active');
-  if (btn) btn.classList.add('active');
-  if (id === 'lista') renderLista();
-  if (id === 'exportar') renderExportPreview();
-  if (id === 'mapa') renderMapa();
-}
-
-function renderMapa() {
-  const statsEl   = document.getElementById('mapaStats');
-  const conteudo  = document.getElementById('mapaConteudo');
-
-  // Stats
-  const nFotos  = pontos.reduce((s, p) => s + p.fotos.length, 0);
-  const nAudios = pontos.reduce((s, p) => s + p.audios.length, 0);
-  const cats    = [...new Set(pontos.map(p => p.categoria))];
-  statsEl.innerHTML = `
-    <div class="mapa-stat"><b>${pontos.length}</b>Pontos</div>
-    <div class="mapa-stat"><b>${nFotos}</b>Fotos</div>
-    <div class="mapa-stat"><b>${nAudios}</b>Áudios</div>
-    <div class="mapa-stat"><b>${cats.length}</b>Categori${cats.length===1?'a':'as'}</div>
-  `;
-
-  if (!pontos.length) {
-    conteudo.innerHTML = `<div class="mapa-empty-map"><div class="icon">🗺️</div><p>Nenhum ponto coletado ainda.</p></div>`;
-    if (mapaLeaflet) { mapaLeaflet.remove(); mapaLeaflet = null; }
-    return;
-  }
-
-  // Montar o mapa
-  conteudo.innerHTML = '<div id="map"></div>';
-
-  // Destruir mapa anterior se existir
-  if (mapaLeaflet) { mapaLeaflet.remove(); mapaLeaflet = null; }
-
-  // Inicializar Leaflet
-  const centro = [pontos[0].coords.lat, pontos[0].coords.lng];
-  mapaLeaflet = L.map('map', { zoomControl: true }).setView(centro, 15);
-
-  // Tile layer OpenStreetMap (gratuito)
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '© OpenStreetMap',
-    maxZoom: 19
-  }).addTo(mapaLeaflet);
-
-  // Ícone personalizado ON azul
-  const iconeON = L.divIcon({
-    className: '',
-    html: `<div style="
-      width:32px;height:32px;
-      background:#64ABDE;
-      border:3px solid #1D3140;
-      border-radius:50% 50% 50% 0;
-      transform:rotate(-45deg);
-      box-shadow:0 2px 8px rgba(0,0,0,0.4);
-    "></div>`,
-    iconSize: [32, 32],
-    iconAnchor: [16, 32],
-    popupAnchor: [0, -34]
-  });
-
-  const bounds = [];
-
-  pontos.forEach(p => {
-    const ll = [p.coords.lat, p.coords.lng];
-    bounds.push(ll);
-
-    const popup = `
-      <div class="popup-id">${p.id} · ${p.categoria}</div>
-      <div class="popup-nome">${p.nome}</div>
-      ${p.descricao ? `<div class="popup-desc">${p.descricao.substring(0,120)}${p.descricao.length>120?'…':''}</div>` : ''}
-      <div class="popup-meta">
-        📸 ${p.fotos.length} foto${p.fotos.length!==1?'s':''} &nbsp;·&nbsp;
-        🎙️ ${p.audios.length} áudio${p.audios.length!==1?'s':''}<br>
-        🕐 ${p.dataFormatada}
-      </div>
-      <a class="popup-link" href="https://www.google.com/maps?q=${p.coords.lat},${p.coords.lng}" target="_blank">📍 Abrir no Google Maps</a>
-    `;
-
-    L.marker(ll, { icon: iconeON })
-      .addTo(mapaLeaflet)
-      .bindPopup(popup, { maxWidth: 240 });
-  });
-
-  // Ajustar zoom para mostrar todos os pontos
-  if (bounds.length === 1) {
-    mapaLeaflet.setView(bounds[0], 16);
-  } else {
-    mapaLeaflet.fitBounds(bounds, { padding: [40, 40] });
-  }
-}
-
-function atualizarContador() {
-  const n = pontos.length;
-  document.getElementById('headerCount').textContent = n + ' pt' + (n!==1?'s':'');
-  document.getElementById('exportCount').textContent = n;
 }
 
 // ══════════════ GPS ══════════════
@@ -973,15 +987,15 @@ function toggleManual() {
   el.style.display = el.style.display === 'none' ? 'block' : 'none';
 }
 function useManual() {
-  const val = document.getElementById('manualLatLng').value.trim();
+  const val   = document.getElementById('manualLatLng').value.trim();
   const parts = val.split(',');
   if (parts.length !== 2) { toast('Use: -23.5505, -46.6333', true); return; }
   const lat = parseFloat(parts[0]), lng = parseFloat(parts[1]);
   if (isNaN(lat) || isNaN(lng)) { toast('Coordenadas inválidas', true); return; }
   currentCoords = { lat, lng };
   document.getElementById('coordsText').textContent = `${lat.toFixed(7)}, ${lng.toFixed(7)}  (manual)`;
-  document.getElementById('coordsBox').className = 'coords-box success';
-  document.getElementById('gpsDot').className = 'dot green';
+  document.getElementById('coordsBox').className    = 'coords-box success';
+  document.getElementById('gpsDot').className       = 'dot green';
   const lnk = document.getElementById('mapLink');
   lnk.href = `https://www.google.com/maps?q=${lat},${lng}`;
   lnk.style.display = 'flex';
@@ -991,11 +1005,15 @@ function useManual() {
 // ══════════════ FOTOS ══════════════
 let currentPhotos = [];
 function addPhotos(event) {
-  Array.from(event.target.files).forEach(file => {
+  const files = Array.from(event.target.files);
+  let loaded = 0;
+  files.forEach(file => {
     const reader = new FileReader();
     reader.onload = e => {
       currentPhotos.push({ dataUrl: e.target.result, name: `foto_${Date.now()}_${Math.random().toString(36).substr(2,5)}.jpg` });
+      loaded++;
       renderPhotoGrid();
+      if (loaded === files.length) toast(`📸 ${loaded} foto${loaded>1?'s':''} adicionada${loaded>1?'s':''}`);
     };
     reader.readAsDataURL(file);
   });
@@ -1033,6 +1051,7 @@ async function toggleRec() {
       reader.onload = e => {
         currentAudios.push({ dataUrl: e.target.result, name: `audio_${Date.now()}.webm`, duration: recSeconds });
         renderAudios();
+        toast(`🎙️ Áudio de ${String(Math.floor(recSeconds/60)).padStart(2,'0')}:${String(recSeconds%60).padStart(2,'0')} adicionado`);
       };
       reader.readAsDataURL(blob);
       stream.getTracks().forEach(t => t.stop());
@@ -1066,33 +1085,64 @@ function renderAudios() {
 function removeAudio(i) { currentAudios.splice(i, 1); renderAudios(); }
 
 // ══════════════ SALVAR PONTO ══════════════
-function salvarPonto() {
+async function salvarPonto() {
   const nome = document.getElementById('ptNome').value.trim();
-  if (!nome) { toast('Informe o nome do ponto', true); return; }
-  if (!currentCoords) { toast('Capture as coordenadas GPS primeiro', true); return; }
+  if (!nome)         { toast('Informe o nome do ponto', true); return; }
+  if (!currentCoords){ toast('Capture as coordenadas GPS primeiro', true); return; }
+
+  const btn = document.getElementById('btnSalvarPonto');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<div class="spinner" style="border-top-color:var(--azul-escuro)"></div> Salvando...'; }
+
+  const ptId = projetoAtual.id + '_PT' + String(pontos.length + 1).padStart(3,'0');
   const ponto = {
-    id: 'PT' + String(pontos.length + 1).padStart(3, '0'),
-    nome, categoria: document.getElementById('ptCategoria').value,
-    descricao: document.getElementById('ptDesc').value,
-    coords: { ...currentCoords },
-    fotos: [...currentPhotos], audios: [...currentAudios],
-    timestamp: new Date().toISOString(),
-    dataFormatada: new Date().toLocaleString('pt-BR')
+    id:           ptId,
+    projId:       projetoAtual.id,
+    ptNum:        'PT' + String(pontos.length + 1).padStart(3,'0'),
+    nome,
+    categoria:    document.getElementById('ptCategoria').value,
+    descricao:    document.getElementById('ptDesc').value,
+    coords:       { ...currentCoords },
+    fotoNames:    currentPhotos.map(f => f.name),
+    audioMetas:   currentAudios.map(a => ({ name: a.name, duration: a.duration })),
+    criadoTs:     Date.now(),
+    dataFormatada: new Date().toLocaleString('pt-BR'),
+    timestamp:    new Date().toISOString()
   };
-  pontos.push(ponto);
-  salvarPontosAtual();
-  // reset
-  document.getElementById('ptNome').value = '';
-  document.getElementById('ptDesc').value = '';
-  currentPhotos = []; currentAudios = []; currentCoords = null;
-  document.getElementById('photoGrid').innerHTML = '<button class="add-photo-btn" onclick="document.getElementById(\'fileInput\').click()">📷<span>Câmera</span></button>';
-  document.getElementById('audioList').innerHTML = '';
-  document.getElementById('coordsBox').className = 'coords-box';
-  document.getElementById('gpsDot').className = 'dot';
-  document.getElementById('coordsText').textContent = 'Aguardando sinal GPS...';
-  document.getElementById('mapLink').style.display = 'none';
-  document.getElementById('manualCoords').style.display = 'none';
-  toast(`✅ ${ponto.id} — ${ponto.nome} salvo!`);
+
+  try {
+    // Salvar metadados do ponto
+    await dbPut('pontos', ponto);
+
+    // Salvar cada arquivo no store 'arquivos'
+    for (const f of currentPhotos) {
+      await dbPut('arquivos', { id: ptId + '_' + f.name, dataUrl: f.dataUrl });
+    }
+    for (const a of currentAudios) {
+      await dbPut('arquivos', { id: ptId + '_' + a.name, dataUrl: a.dataUrl });
+    }
+
+    pontos.push(ponto);
+    atualizarContador();
+
+    // Reset form
+    document.getElementById('ptNome').value  = '';
+    document.getElementById('ptDesc').value  = '';
+    currentPhotos = []; currentAudios = []; currentCoords = null;
+    document.getElementById('photoGrid').innerHTML = '<button class="add-photo-btn" onclick="document.getElementById(\'fileInput\').click()">📷<span>Câmera</span></button>';
+    document.getElementById('audioList').innerHTML = '';
+    document.getElementById('coordsBox').className = 'coords-box';
+    document.getElementById('gpsDot').className    = 'dot';
+    document.getElementById('coordsText').textContent = 'Aguardando sinal GPS...';
+    document.getElementById('mapLink').style.display  = 'none';
+    document.getElementById('manualCoords').style.display = 'none';
+
+    toast(`✅ ${ponto.ptNum} — ${ponto.nome} salvo!`);
+  } catch(e) {
+    toast('Erro ao salvar: ' + e.message, true);
+    console.error(e);
+  }
+
+  if (btn) { btn.disabled = false; btn.innerHTML = '💾 &nbsp;SALVAR PONTO'; }
 }
 
 // ══════════════ LISTA ══════════════
@@ -1104,14 +1154,16 @@ function renderLista() {
   }
   el.innerHTML = pontos.slice().reverse().map((p, ri) => {
     const i = pontos.length - 1 - ri;
+    const nF = p.fotoNames ? p.fotoNames.length : 0;
+    const nA = p.audioMetas ? p.audioMetas.length : 0;
     return `<div class="ponto-card">
-      <div class="ponto-id">${p.id} · ${p.categoria}</div>
+      <div class="ponto-id">${p.ptNum} · ${p.categoria}</div>
       <div class="ponto-nome">${p.nome}</div>
       <div class="ponto-coords">📍 ${p.coords.lat.toFixed(6)}, ${p.coords.lng.toFixed(6)}</div>
       ${p.descricao ? `<div class="ponto-desc">${p.descricao.substring(0,140)}${p.descricao.length>140?'…':''}</div>` : ''}
       <div class="ponto-meta">
-        <span>📸 ${p.fotos.length} foto${p.fotos.length!==1?'s':''}</span>
-        <span>🎙️ ${p.audios.length} áudio${p.audios.length!==1?'s':''}</span>
+        <span>📸 ${nF} foto${nF!==1?'s':''}</span>
+        <span>🎙️ ${nA} áudio${nA!==1?'s':''}</span>
         <span>🕐 ${p.dataFormatada}</span>
       </div>
       <div class="ponto-actions">
@@ -1121,149 +1173,129 @@ function renderLista() {
     </div>`;
   }).join('');
 }
-function excluirPonto(i) {
-  if (!confirm(`Excluir ${pontos[i].id} — ${pontos[i].nome}?`)) return;
-  pontos.splice(i, 1); salvarPontosAtual(); renderLista(); toast('Ponto excluído');
+
+async function excluirPonto(i) {
+  const p = pontos[i];
+  if (!confirm(`Excluir ${p.ptNum} — ${p.nome}?`)) return;
+  await dbDeletePrefix('arquivos', p.id + '_');
+  await dbDelete('pontos', p.id);
+  pontos.splice(i, 1);
+  atualizarContador();
+  renderLista();
+  toast('Ponto excluído');
+}
+
+// ══════════════ MAPA ══════════════
+function renderMapa() {
+  const statsEl  = document.getElementById('mapaStats');
+  const conteudo = document.getElementById('mapaConteudo');
+
+  const nFotos  = pontos.reduce((s, p) => s + (p.fotoNames  ? p.fotoNames.length  : 0), 0);
+  const nAudios = pontos.reduce((s, p) => s + (p.audioMetas ? p.audioMetas.length : 0), 0);
+  const cats    = [...new Set(pontos.map(p => p.categoria))];
+  statsEl.innerHTML = `
+    <div class="mapa-stat"><b>${pontos.length}</b>Pontos</div>
+    <div class="mapa-stat"><b>${nFotos}</b>Fotos</div>
+    <div class="mapa-stat"><b>${nAudios}</b>Áudios</div>
+    <div class="mapa-stat"><b>${cats.length}</b>Categori${cats.length===1?'a':'as'}</div>
+  `;
+
+  if (!pontos.length) {
+    conteudo.innerHTML = `<div class="mapa-empty-map"><div class="icon">🗺️</div><p>Nenhum ponto coletado ainda.</p></div>`;
+    if (mapaLeaflet) { mapaLeaflet.remove(); mapaLeaflet = null; }
+    return;
+  }
+
+  conteudo.innerHTML = '<div id="map"></div>';
+  if (mapaLeaflet) { mapaLeaflet.remove(); mapaLeaflet = null; }
+
+  const centro = [pontos[0].coords.lat, pontos[0].coords.lng];
+  mapaLeaflet  = L.map('map', { zoomControl: true }).setView(centro, 15);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap', maxZoom: 19
+  }).addTo(mapaLeaflet);
+
+  const iconeON = L.divIcon({
+    className: '',
+    html: `<div style="width:28px;height:28px;background:#64ABDE;border:3px solid #1D3140;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 2px 8px rgba(0,0,0,0.4)"></div>`,
+    iconSize: [28,28], iconAnchor: [14,28], popupAnchor: [0,-30]
+  });
+
+  const bounds = [];
+  pontos.forEach(p => {
+    const ll = [p.coords.lat, p.coords.lng];
+    bounds.push(ll);
+    const nF = p.fotoNames ? p.fotoNames.length : 0;
+    const nA = p.audioMetas ? p.audioMetas.length : 0;
+    const popup = `
+      <div class="popup-id">${p.ptNum} · ${p.categoria}</div>
+      <div class="popup-nome">${p.nome}</div>
+      ${p.descricao ? `<div class="popup-desc">${p.descricao.substring(0,120)}${p.descricao.length>120?'…':''}</div>` : ''}
+      <div class="popup-meta">📸 ${nF} foto${nF!==1?'s':''} · 🎙️ ${nA} áudio${nA!==1?'s':''}<br>🕐 ${p.dataFormatada}</div>
+      <a class="popup-link" href="https://www.google.com/maps?q=${p.coords.lat},${p.coords.lng}" target="_blank">📍 Abrir no Google Maps</a>
+    `;
+    L.marker(ll, { icon: iconeON }).addTo(mapaLeaflet).bindPopup(popup, { maxWidth: 240 });
+  });
+
+  if (bounds.length === 1) mapaLeaflet.setView(bounds[0], 16);
+  else mapaLeaflet.fitBounds(bounds, { padding: [40,40] });
 }
 
 // ══════════════ EXPORT ══════════════
 function renderExportPreview() {
   const el = document.getElementById('zipPreview');
   if (!pontos.length) { el.textContent = 'Nenhum ponto registrado para exportar.'; return; }
-  let tree = 'campo_on_export/\n';
-  tree += '├── dados.json\n';
-  tree += '├── relatorio_campo.txt\n';
-  tree += '├── pontos_georeferenciados.kml\n';
-  tree += '└── pontos/\n';
+  let tree = 'campo_on_export/\n├── dados.json\n├── relatorio_campo.txt\n├── pontos_georeferenciados.kml\n└── pontos/\n';
   pontos.forEach((p, i) => {
     const last = i === pontos.length - 1;
-    const pre = last ? '    └── ' : '    ├── ';
-    const inn = last ? '        ' : '    │   ';
-    tree += `${pre}${p.id}_${p.nome.replace(/[^a-zA-Z0-9]/g,'_')}/\n`;
+    const pre  = last ? '    └── ' : '    ├── ';
+    const inn  = last ? '        ' : '    │   ';
+    const nF   = p.fotoNames  ? p.fotoNames.length  : 0;
+    const nA   = p.audioMetas ? p.audioMetas.length : 0;
+    tree += `${pre}${p.ptNum}_${p.nome.replace(/[^a-zA-Z0-9]/g,'_')}/\n`;
     tree += `${inn}├── info.txt\n`;
-    if (p.fotos.length) tree += `${inn}├── fotos/  (${p.fotos.length} arq.)\n`;
-    if (p.audios.length) tree += `${inn}└── audios/  (${p.audios.length} arq.)\n`;
+    if (nF) tree += `${inn}├── fotos/  (${nF} arq.)\n`;
+    if (nA) tree += `${inn}└── audios/  (${nA} arq.)\n`;
   });
   el.textContent = tree;
 }
 
 function gerarRelatorio() {
-  const agora = new Date().toLocaleString('pt-BR');
-  const sep1 = '═'.repeat(60);
-  const sep2 = '─'.repeat(60);
-
-  let rel = '';
-  rel += `${'═'.repeat(60)}\n`;
-  rel += `  ON ENGENHARIA — RELATÓRIO DE CAMPO\n`;
-  rel += `${'═'.repeat(60)}\n`;
-  rel += `  Gerado em : ${agora}\n`;
-  rel += `  Total     : ${pontos.length} ponto${pontos.length !== 1 ? 's' : ''} registrado${pontos.length !== 1 ? 's' : ''}\n`;
-  rel += `${sep1}\n\n`;
-
-  // Sumário de todos os pontos
-  rel += `SUMÁRIO GERAL\n${sep2}\n`;
-  rel += `${'Nº'.padEnd(6)}${'ID'.padEnd(8)}${'Nome'.padEnd(28)}${'Latitude'.padEnd(16)}Longitude\n`;
-  rel += `${sep2}\n`;
+  const sep1 = '═'.repeat(60), sep2 = '─'.repeat(60);
+  let rel = `${sep1}\n  ON ENGENHARIA — RELATÓRIO DE CAMPO\n${sep1}\n`;
+  rel += `  Projeto   : ${projetoAtual.nome}\n`;
+  rel += `  Cliente   : ${projetoAtual.cliente}\n`;
+  rel += `  Gerado em : ${new Date().toLocaleString('pt-BR')}\n`;
+  rel += `  Total     : ${pontos.length} ponto${pontos.length!==1?'s':''}\n${sep1}\n\n`;
+  rel += `SUMÁRIO\n${sep2}\n`;
+  rel += `${'Nº'.padEnd(5)}${'ID'.padEnd(7)}${'Nome'.padEnd(28)}${'Latitude'.padEnd(16)}Longitude\n${sep2}\n`;
   pontos.forEach((p, i) => {
-    const num = String(i + 1).padEnd(6);
-    const id  = p.id.padEnd(8);
-    const nm  = p.nome.substring(0, 26).padEnd(28);
-    const lat = String(p.coords.lat.toFixed(6)).padEnd(16);
-    const lng = String(p.coords.lng.toFixed(6));
-    rel += `${num}${id}${nm}${lat}${lng}\n`;
+    const nF = p.fotoNames?p.fotoNames.length:0, nA = p.audioMetas?p.audioMetas.length:0;
+    rel += `${String(i+1).padEnd(5)}${p.ptNum.padEnd(7)}${p.nome.substring(0,26).padEnd(28)}${String(p.coords.lat.toFixed(6)).padEnd(16)}${p.coords.lng.toFixed(6)}\n`;
   });
-  rel += `\n${sep1}\n\n`;
-
-  // Detalhamento ponto a ponto
-  rel += `DETALHAMENTO POR PONTO\n\n`;
+  rel += `\n${sep1}\nDETALHAMENTO\n\n`;
   pontos.forEach((p, i) => {
-    rel += `${sep1}\n`;
-    rel += `  PONTO ${String(i + 1).padStart(2, '0')} — ${p.nome.toUpperCase()}\n`;
-    rel += `${sep1}\n`;
-    rel += `  ID          : ${p.id}\n`;
-    rel += `  Categoria   : ${p.categoria}\n`;
-    rel += `  Data / Hora : ${p.dataFormatada}\n`;
-    rel += `\n`;
-    rel += `  COORDENADAS\n`;
-    rel += `  ${sep2.substring(0,40)}\n`;
-    rel += `  Latitude    : ${p.coords.lat.toFixed(7)}\n`;
-    rel += `  Longitude   : ${p.coords.lng.toFixed(7)}\n`;
-    rel += `  Google Maps : https://www.google.com/maps?q=${p.coords.lat},${p.coords.lng}\n`;
-    rel += `\n`;
-    rel += `  DESCRIÇÃO\n`;
-    rel += `  ${sep2.substring(0,40)}\n`;
-    const desc = p.descricao ? p.descricao : '(sem descrição)';
-    // Quebrar linhas longas a cada 55 chars
-    const words = desc.split(' ');
-    let linha = '  ';
-    words.forEach(w => {
-      if ((linha + w).length > 57) { rel += linha + '\n'; linha = '  ' + w + ' '; }
-      else { linha += w + ' '; }
-    });
-    if (linha.trim()) rel += linha + '\n';
-    rel += `\n`;
-    rel += `  ARQUIVOS VINCULADOS\n`;
-    rel += `  ${sep2.substring(0,40)}\n`;
-    rel += `  Fotos  : ${p.fotos.length} arquivo${p.fotos.length !== 1 ? 's' : ''}\n`;
-    if (p.fotos.length) p.fotos.forEach((f, fi) => rel += `           ${fi+1}. ${f.name}\n`);
-    rel += `  Áudios : ${p.audios.length} arquivo${p.audios.length !== 1 ? 's' : ''}\n`;
-    if (p.audios.length) p.audios.forEach((a, ai) => {
-      const m = String(Math.floor(a.duration/60)).padStart(2,'0');
-      const s = String(a.duration%60).padStart(2,'0');
-      rel += `           ${ai+1}. ${a.name}  (${m}:${s})\n`;
-    });
-    rel += `\n`;
+    const nF = p.fotoNames?p.fotoNames.length:0, nA = p.audioMetas?p.audioMetas.length:0;
+    rel += `${sep1}\n  PONTO ${String(i+1).padStart(2,'0')} — ${p.nome.toUpperCase()}\n${sep1}\n`;
+    rel += `  ID          : ${p.ptNum}\n  Categoria   : ${p.categoria}\n  Data/Hora   : ${p.dataFormatada}\n`;
+    rel += `  Latitude    : ${p.coords.lat.toFixed(7)}\n  Longitude   : ${p.coords.lng.toFixed(7)}\n`;
+    rel += `  Google Maps : https://www.google.com/maps?q=${p.coords.lat},${p.coords.lng}\n\n`;
+    rel += `  DESCRIÇÃO\n  ${sep2.substring(0,40)}\n  ${p.descricao||'(sem descrição)'}\n\n`;
+    rel += `  Fotos: ${nF}  |  Áudios: ${nA}\n${sep2}\n\n`;
   });
-
-  rel += `${sep1}\n`;
-  rel += `  Fim do relatório — ON Engenharia\n`;
-  rel += `${sep1}\n`;
   return rel;
 }
 
 function gerarKML() {
-  const agora = new Date().toISOString();
-  let kml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
-  kml += `<kml xmlns="http://www.opengis.net/kml/2.2">\n`;
-  kml += `  <Document>\n`;
-  kml += `    <name>ON Engenharia — Pontos de Campo</name>\n`;
-  kml += `    <description>Exportado em ${new Date().toLocaleString('pt-BR')}</description>\n\n`;
-
-  // Estilo dos marcadores
-  kml += `    <Style id="on_ponto">\n`;
-  kml += `      <IconStyle>\n`;
-  kml += `        <color>ffde6464</color>\n`;
-  kml += `        <scale>1.1</scale>\n`;
-  kml += `        <Icon><href>http://maps.google.com/mapfiles/kml/paddle/blu-circle.png</href></Icon>\n`;
-  kml += `      </IconStyle>\n`;
-  kml += `      <LabelStyle><scale>0.9</scale></LabelStyle>\n`;
-  kml += `    </Style>\n\n`;
-
+  let kml = `<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2">\n  <Document>\n`;
+  kml += `    <name>ON Engenharia — ${projetoAtual.cliente} — ${projetoAtual.nome}</name>\n`;
+  kml += `    <description>Exportado em ${new Date().toLocaleString('pt-BR')}</description>\n`;
+  kml += `    <Style id="on_ponto"><IconStyle><color>ffde6464</color><scale>1.1</scale><Icon><href>http://maps.google.com/mapfiles/kml/paddle/blu-circle.png</href></Icon></IconStyle></Style>\n\n`;
   pontos.forEach((p, i) => {
-    const desc = [
-      `<b>ID:</b> ${p.id}`,
-      `<b>Categoria:</b> ${p.categoria}`,
-      `<b>Data:</b> ${p.dataFormatada}`,
-      `<b>Descrição:</b> ${p.descricao || '(sem descrição)'}`,
-      `<b>Fotos:</b> ${p.fotos.length} | <b>Áudios:</b> ${p.audios.length}`,
-      `<a href="https://www.google.com/maps?q=${p.coords.lat},${p.coords.lng}">Ver no Google Maps</a>`
-    ].join('<br/>');
-
-    kml += `    <Placemark>\n`;
-    kml += `      <name>${p.id} — ${p.nome}</name>\n`;
-    kml += `      <description><![CDATA[${desc}]]></description>\n`;
-    kml += `      <styleUrl>#on_ponto</styleUrl>\n`;
-    kml += `      <ExtendedData>\n`;
-    kml += `        <Data name="categoria"><value>${p.categoria}</value></Data>\n`;
-    kml += `        <Data name="data"><value>${p.dataFormatada}</value></Data>\n`;
-    kml += `        <Data name="descricao"><value>${p.descricao || ''}</value></Data>\n`;
-    kml += `      </ExtendedData>\n`;
-    kml += `      <Point>\n`;
-    kml += `        <coordinates>${p.coords.lng},${p.coords.lat},0</coordinates>\n`;
-    kml += `      </Point>\n`;
-    kml += `    </Placemark>\n\n`;
+    const nF = p.fotoNames?p.fotoNames.length:0, nA = p.audioMetas?p.audioMetas.length:0;
+    const desc = `<b>ID:</b> ${p.ptNum}<br/><b>Categoria:</b> ${p.categoria}<br/><b>Data:</b> ${p.dataFormatada}<br/><b>Descrição:</b> ${p.descricao||''}<br/><b>Fotos:</b> ${nF} | <b>Áudios:</b> ${nA}<br/><a href="https://www.google.com/maps?q=${p.coords.lat},${p.coords.lng}">Ver no Google Maps</a>`;
+    kml += `    <Placemark>\n      <name>${p.ptNum} — ${p.nome}</name>\n      <description><![CDATA[${desc}]]></description>\n      <styleUrl>#on_ponto</styleUrl>\n      <Point><coordinates>${p.coords.lng},${p.coords.lat},0</coordinates></Point>\n    </Placemark>\n`;
   });
-
   kml += `  </Document>\n</kml>`;
   return kml;
 }
@@ -1272,95 +1304,88 @@ async function exportarZIP() {
   if (!pontos.length) { toast('Nenhum ponto para exportar', true); return; }
   const btn = document.getElementById('btnExport');
   btn.innerHTML = '<div class="spinner"></div> &nbsp;Gerando ZIP...';
-  btn.disabled = true;
+  btn.disabled  = true;
   await new Promise(r => setTimeout(r, 60));
   try {
-    const zip = new JSZip();
+    const zip  = new JSZip();
     const root = zip.folder('campo_on_export');
 
     // dados.json
     root.file('dados.json', JSON.stringify(pontos.map(p => ({
-      id: p.id, nome: p.nome, categoria: p.categoria, descricao: p.descricao,
+      id: p.ptNum, nome: p.nome, categoria: p.categoria, descricao: p.descricao,
       latitude: p.coords.lat, longitude: p.coords.lng,
       google_maps: `https://www.google.com/maps?q=${p.coords.lat},${p.coords.lng}`,
-      fotos: p.fotos.map(f => f.name), audios: p.audios.map(a => a.name),
-      timestamp: p.timestamp, data: p.dataFormatada
+      fotos: p.fotoNames||[], audios: (p.audioMetas||[]).map(a=>a.name),
+      data: p.dataFormatada, timestamp: p.timestamp
     })), null, 2));
 
-    // relatorio_campo.txt — detalhado ponto a ponto
     root.file('relatorio_campo.txt', gerarRelatorio());
-
-    // pontos_georeferenciados.kml
     root.file('pontos_georeferenciados.kml', gerarKML());
 
-    // pasta por ponto
-    const pontosPasta = root.folder('pontos');
+    const pasta = root.folder('pontos');
     for (const p of pontos) {
-      const slug = p.id + '_' + p.nome.replace(/[^a-zA-Z0-9]/g,'_');
-      const pp = pontosPasta.folder(slug);
-      let info = `ON ENGENHARIA — DADOS DO PONTO\n${'─'.repeat(40)}\n`;
-      info += `ID         : ${p.id}\nNome       : ${p.nome}\nCategoria  : ${p.categoria}\n`;
-      info += `Data/Hora  : ${p.dataFormatada}\nLatitude   : ${p.coords.lat}\nLongitude  : ${p.coords.lng}\n`;
-      info += `Google Maps: https://www.google.com/maps?q=${p.coords.lat},${p.coords.lng}\n\n`;
-      info += `DESCRIÇÃO:\n${p.descricao || '(sem descrição)'}\n`;
+      const slug = p.ptNum + '_' + p.nome.replace(/[^a-zA-Z0-9]/g,'_');
+      const pp   = pasta.folder(slug);
+      const nF   = p.fotoNames?p.fotoNames.length:0, nA = p.audioMetas?p.audioMetas.length:0;
+      let info   = `ON ENGENHARIA\n${'─'.repeat(40)}\nID: ${p.ptNum}\nNome: ${p.nome}\nCategoria: ${p.categoria}\nData: ${p.dataFormatada}\nLatitude: ${p.coords.lat}\nLongitude: ${p.coords.lng}\nMaps: https://www.google.com/maps?q=${p.coords.lat},${p.coords.lng}\n\nDESCRIÇÃO:\n${p.descricao||'(sem descrição)'}\n`;
       pp.file('info.txt', info);
-      if (p.fotos.length) {
+
+      // Buscar arquivos do IndexedDB
+      if (nF) {
         const fp = pp.folder('fotos');
-        p.fotos.forEach(f => fp.file(f.name, f.dataUrl.split(',')[1], { base64: true }));
+        for (const name of p.fotoNames) {
+          const arq = await dbGet('arquivos', p.id + '_' + name);
+          if (arq && arq.dataUrl) fp.file(name, arq.dataUrl.split(',')[1], { base64: true });
+        }
       }
-      if (p.audios.length) {
+      if (nA) {
         const ap = pp.folder('audios');
-        p.audios.forEach(a => ap.file(a.name, a.dataUrl.split(',')[1], { base64: true }));
+        for (const a of p.audioMetas) {
+          const arq = await dbGet('arquivos', p.id + '_' + a.name);
+          if (arq && arq.dataUrl) ap.file(a.name, arq.dataUrl.split(',')[1], { base64: true });
+        }
       }
     }
 
     const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
     const slug = projetoAtual ? projetoAtual.cliente.replace(/[^a-zA-Z0-9À-ú]/g,'_').substring(0,30) + '_' + projetoAtual.nome.replace(/[^a-zA-Z0-9À-ú]/g,'_').substring(0,30) : 'campo';
     a.download = `ON_${slug}_${new Date().toISOString().slice(0,10)}.zip`;
     a.click();
     URL.revokeObjectURL(url);
-    toast('✅ ZIP com relatório e KML baixado!');
+    toast('✅ ZIP gerado e baixado!');
   } catch(e) {
     toast('Erro ao gerar ZIP: ' + e.message, true);
+    console.error(e);
   }
   btn.innerHTML = '📦 &nbsp;GERAR E BAIXAR ZIP';
-  btn.disabled = false;
+  btn.disabled  = false;
 }
 
-function exportarJSON() {
+async function exportarJSON() {
   const blob = new Blob([JSON.stringify(pontos, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  const slugJ = projetoAtual ? projetoAtual.cliente.replace(/[^a-zA-Z0-9À-ú]/g,'_').substring(0,30) + '_' + projetoAtual.nome.replace(/[^a-zA-Z0-9À-ú]/g,'_').substring(0,30) : 'campo';
-  a.download = `ON_${slugJ}_${new Date().toISOString().slice(0,10)}.json`;
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  const slugJ = projetoAtual ? projetoAtual.cliente.replace(/[^a-zA-Z0-9À-ú]/g,'_').substring(0,30) : 'campo';
+  a.download  = `ON_${slugJ}_${new Date().toISOString().slice(0,10)}.json`;
   a.click();
   toast('JSON exportado!');
 }
 
-function limparTudo() {
-  if (!confirm(`Apagar TODOS os ${pontos.length} pontos registrados?\nEsta ação não pode ser desfeita.`)) return;
-  pontos = []; salvar(); renderLista(); renderExportPreview(); toast('Todos os dados foram apagados');
-}
-
-
-
-function exportarJSON() {
-  const blob = new Blob([JSON.stringify(pontos, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `on_dados_${new Date().toISOString().slice(0,10)}.json`;
-  a.click();
-  toast('JSON exportado!');
-}
-
-function limparTudo() {
+async function limparTudo() {
   if (!confirm(`Apagar TODOS os ${pontos.length} pontos deste projeto?`)) return;
-  pontos = []; salvarPontosAtual(); renderLista(); renderExportPreview(); toast('Pontos apagados');
+  for (const p of pontos) {
+    await dbDeletePrefix('arquivos', p.id + '_');
+    await dbDelete('pontos', p.id);
+  }
+  pontos = [];
+  atualizarContador();
+  renderLista();
+  renderExportPreview();
+  toast('Pontos apagados');
 }
 
 // ══════════════ UTILS ══════════════
@@ -1373,13 +1398,12 @@ function toast(msg, err = false) {
   clearTimeout(toastTm);
   toastTm = setTimeout(() => el.classList.remove('show'), 3200);
 }
-
-window.addEventListener('online', () => document.getElementById('offlineBar').classList.remove('show'));
+window.addEventListener('online',  () => document.getElementById('offlineBar').classList.remove('show'));
 window.addEventListener('offline', () => document.getElementById('offlineBar').classList.add('show'));
 if (!navigator.onLine) document.getElementById('offlineBar').classList.add('show');
 
 // ══════════════ INIT ══════════════
-renderProjetos();
+carregarProjetos();
 </script>
 </body>
 </html>
