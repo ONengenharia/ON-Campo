@@ -473,12 +473,62 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
   /* ── MAPA ── */
   .mapa-toolbar {
-    display: flex;
-    gap: 8px;
-    padding: 0 14px 10px;
-    flex-wrap: wrap;
-    align-items: center;
+    padding: 0 12px 10px;
   }
+  .measure-box {
+    background: var(--azul-card);
+    border: 1px solid rgba(100,171,222,0.2);
+    border-radius: 10px;
+    padding: 14px;
+  }
+  .measure-box h4 {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--azul-eletrico);
+    font-weight: 700;
+    margin-bottom: 12px;
+  }
+  .measure-selects {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .measure-selects select {
+    margin-bottom: 0;
+    font-size: 0.8rem;
+    padding: 8px 10px;
+  }
+  .measure-result {
+    display: none;
+    background: var(--azul-escuro);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-top: 10px;
+    border-left: 3px solid var(--azul-eletrico);
+  }
+  .measure-result.visible { display: block; }
+  .measure-result-dist {
+    font-size: 1.6rem;
+    font-weight: 900;
+    color: var(--azul-eletrico);
+    letter-spacing: -0.5px;
+    line-height: 1;
+  }
+  .measure-result-label {
+    font-size: 0.7rem;
+    color: var(--cinza-texto);
+    margin-top: 3px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .measure-result-pts {
+    font-size: 0.72rem;
+    color: rgba(255,255,255,0.5);
+    margin-top: 6px;
+  }
+  /* Linha de medição no mapa */
   .btn-measure {
     display: inline-flex;
     align-items: center;
@@ -497,20 +547,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   .btn-measure.ativo {
     background: var(--azul-eletrico);
     color: var(--azul-escuro);
-    border-color: var(--azul-eletrico);
   }
-  .measure-info {
-    background: var(--azul-card);
-    border: 1px solid rgba(100,171,222,0.2);
-    border-radius: 8px;
-    padding: 8px 14px;
-    font-size: 0.78rem;
-    color: var(--cinza-texto);
-    min-width: 160px;
-    display: none;
-  }
-  .measure-info.visible { display: block; }
-  .measure-dist { font-size: 1rem; font-weight: 800; color: var(--azul-eletrico); }
+  .measure-info { display: none; }
+  .measure-dist { display: none; }
   #map {
     width: 100%;
     height: calc(100vh - 240px);
@@ -734,12 +773,28 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     </div>
     <div class="mapa-stats" id="mapaStats"></div>
     <div class="mapa-toolbar">
-      <button class="btn-measure" id="btnMedir" onclick="toggleMedicao()">📏 Medir Distância</button>
-      <div class="measure-info" id="measureInfo">
-        <div id="measureStatus">Toque no 1º ponto</div>
-        <div class="measure-dist" id="measureDist"></div>
+      <div class="measure-box">
+        <h4>📏 Medir Distância entre Pontos</h4>
+        <div class="measure-selects">
+          <select id="medirPontoA" onchange="calcularMedicao()">
+            <option value="">Ponto A</option>
+          </select>
+          <select id="medirPontoB" onchange="calcularMedicao()">
+            <option value="">Ponto B</option>
+          </select>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn-measure" id="btnMapClick" onclick="toggleMedicaoMapa()" style="flex:1;justify-content:center">
+            🖱️ Medir no mapa
+          </button>
+          <button class="btn-measure" onclick="limparMedicao()" style="border-color:rgba(224,92,92,0.4);color:#e05c5c;background:rgba(224,92,92,0.08)">✕ Limpar</button>
+        </div>
+        <div class="measure-result" id="measureResult">
+          <div class="measure-result-dist" id="measureDist">—</div>
+          <div class="measure-result-label">distância em linha reta</div>
+          <div class="measure-result-pts" id="measurePts"></div>
+        </div>
       </div>
-      <button class="btn-measure" id="btnLimparMed" onclick="limparMedicao()" style="display:none;border-color:rgba(224,92,92,0.4);color:#e05c5c;background:rgba(224,92,92,0.08)">✕ Cancelar</button>
     </div>
     <div id="mapaConteudo"></div>
   </div>
@@ -904,7 +959,7 @@ function showPage(id, btn) {
   if (btn) btn.classList.add('active');
   if (id === 'lista')    renderLista();
   if (id === 'exportar') renderExportPreview();
-  if (id === 'mapa')     renderMapa();
+  if (id === 'mapa')     { renderMapa(); preencherSelectsMedicao(); }
 }
 
 function atualizarContador() {
@@ -1250,103 +1305,155 @@ async function excluirPonto(i) {
 
 // ══════════════ MAPA ══════════════
 // ══════════════ MEDIÇÃO ══════════════
-let medicaoAtiva = false;
-let medicaoPts   = [];   // [{ll, marker, circle}]
-let medicaoLinha = null;
+let medicaoMapaAtiva = false;
+let medicaoPts       = [];
+let medicaoLinha     = null;
 
-function toggleMedicao() {
-  medicaoAtiva = !medicaoAtiva;
-  const btn = document.getElementById('btnMedir');
-  const info = document.getElementById('measureInfo');
-  const cancelBtn = document.getElementById('btnLimparMed');
-  if (medicaoAtiva) {
-    btn.classList.add('ativo');
-    btn.textContent = '📏 Medindo...';
-    info.classList.add('visible');
-    cancelBtn.style.display = 'inline-flex';
-    document.getElementById('measureStatus').textContent = 'Toque no 1º ponto no mapa';
-    document.getElementById('measureDist').textContent = '';
-    if (mapaLeaflet) mapaLeaflet.on('click', onMapClick);
-  } else {
-    limparMedicao();
-  }
-}
-
-function limparMedicao() {
-  medicaoAtiva = false;
-  medicaoPts.forEach(p => {
-    if (p.marker) mapaLeaflet.removeLayer(p.marker);
-    if (p.circle) mapaLeaflet.removeLayer(p.circle);
-  });
-  if (medicaoLinha) { mapaLeaflet.removeLayer(medicaoLinha); medicaoLinha = null; }
-  medicaoPts = [];
-  if (mapaLeaflet) mapaLeaflet.off('click', onMapClick);
-  const btn = document.getElementById('btnMedir');
-  const info = document.getElementById('measureInfo');
-  const cancelBtn = document.getElementById('btnLimparMed');
-  if (btn) { btn.classList.remove('ativo'); btn.textContent = '📏 Medir Distância'; }
-  if (info) info.classList.remove('visible');
-  if (cancelBtn) cancelBtn.style.display = 'none';
-}
-
-function onMapClick(e) {
-  if (!medicaoAtiva) return;
-
-  // Marcador do ponto de medição
-  const ptIcon = L.divIcon({
-    className: '',
-    html: `<div style="width:14px;height:14px;background:#fff;border:3px solid #64ABDE;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,0.5)"></div>`,
-    iconSize: [14,14], iconAnchor: [7,7]
-  });
-  const marker = L.marker(e.latlng, { icon: ptIcon }).addTo(mapaLeaflet);
-  medicaoPts.push({ ll: e.latlng, marker });
-
-  if (medicaoPts.length === 1) {
-    document.getElementById('measureStatus').textContent = 'Toque no 2º ponto';
-    document.getElementById('measureDist').textContent   = '';
-  } else {
-    // Calcular distância Haversine
-    const dist = calcDist(medicaoPts[medicaoPts.length-2].ll, e.latlng);
-    const total = calcDistTotal();
-
-    // Desenhar linha entre os dois últimos
-    const lls = medicaoPts.map(p => p.ll);
-    if (medicaoLinha) mapaLeaflet.removeLayer(medicaoLinha);
-    medicaoLinha = L.polyline(lls, {
-      color: '#64ABDE', weight: 3, dashArray: '8 5', opacity: 0.9
-    }).addTo(mapaLeaflet);
-
-    const segStr   = dist   < 1000 ? dist.toFixed(1)   + ' m' : (dist/1000).toFixed(3)   + ' km';
-    const totalStr = total  < 1000 ? total.toFixed(1)  + ' m' : (total/1000).toFixed(3)  + ' km';
-
-    document.getElementById('measureStatus').textContent =
-      medicaoPts.length === 2
-        ? `Distância:`
-        : `Trecho: ${segStr} · Total:`;
-    document.getElementById('measureDist').textContent =
-      medicaoPts.length === 2 ? totalStr : totalStr;
-
-    // Continuar medindo (polilinha)
-    document.getElementById('measureStatus').textContent =
-      `${medicaoPts.length-1} trecho${medicaoPts.length>2?'s':''} · Total:`;
-  }
+function formatDist(m) {
+  if (m < 1000) return m.toFixed(1) + ' m';
+  return (m / 1000).toFixed(3) + ' km';
 }
 
 function calcDist(ll1, ll2) {
-  const R = 6371000;
+  const R    = 6371000;
   const dLat = (ll2.lat - ll1.lat) * Math.PI / 180;
   const dLng = (ll2.lng - ll1.lng) * Math.PI / 180;
-  const a = Math.sin(dLat/2)**2 +
-            Math.cos(ll1.lat * Math.PI/180) * Math.cos(ll2.lat * Math.PI/180) *
-            Math.sin(dLng/2)**2;
+  const a    = Math.sin(dLat/2)**2 +
+               Math.cos(ll1.lat * Math.PI/180) * Math.cos(ll2.lat * Math.PI/180) *
+               Math.sin(dLng/2)**2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
-function calcDistTotal() {
-  let total = 0;
-  for (let i = 1; i < medicaoPts.length; i++)
-    total += calcDist(medicaoPts[i-1].ll, medicaoPts[i].ll);
-  return total;
+function preencherSelectsMedicao() {
+  const selA = document.getElementById('medirPontoA');
+  const selB = document.getElementById('medirPontoB');
+  if (!selA || !selB) return;
+  const valA = selA.value, valB = selB.value;
+  const opts = '<option value="">— selecione —</option>' +
+    pontos.map(p => `<option value="${p.id}">${p.ptNum} — ${p.nome}</option>`).join('');
+  selA.innerHTML = opts;
+  selB.innerHTML = opts;
+  selA.value = valA;
+  selB.value = valB;
+}
+
+function calcularMedicao() {
+  const idA = document.getElementById('medirPontoA').value;
+  const idB = document.getElementById('medirPontoB').value;
+  const res = document.getElementById('measureResult');
+
+  if (!idA || !idB || idA === idB) {
+    res.classList.remove('visible');
+    limparLinhaMapa();
+    return;
+  }
+
+  const ptA = pontos.find(p => p.id === idA);
+  const ptB = pontos.find(p => p.id === idB);
+  if (!ptA || !ptB) return;
+
+  const dist = calcDist(ptA.coords, ptB.coords);
+  document.getElementById('measureDist').textContent = formatDist(dist);
+  document.getElementById('measurePts').textContent =
+    `De ${ptA.ptNum} (${ptA.nome}) → ${ptB.ptNum} (${ptB.nome})`;
+  res.classList.add('visible');
+
+  // Desenhar linha no mapa se disponível
+  if (mapaLeaflet && typeof L !== 'undefined') {
+    limparLinhaMapa();
+    const llA = [ptA.coords.lat, ptA.coords.lng];
+    const llB = [ptB.coords.lat, ptB.coords.lng];
+    medicaoLinha = L.polyline([llA, llB], {
+      color: '#fff', weight: 2.5, dashArray: '10 6', opacity: 0.9
+    }).addTo(mapaLeaflet);
+
+    // Label de distância no meio da linha
+    const midLat = (ptA.coords.lat + ptB.coords.lat) / 2;
+    const midLng = (ptA.coords.lng + ptB.coords.lng) / 2;
+    const labelIcon = L.divIcon({
+      className: '',
+      html: `<div style="background:var(--azul-escuro,#1D3140);color:#64ABDE;border:1.5px solid #64ABDE;border-radius:6px;padding:3px 8px;font-size:0.72rem;font-weight:800;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.5)">${formatDist(dist)}</div>`,
+      iconAnchor: [40, 12]
+    });
+    const labelMarker = L.marker([midLat, midLng], { icon: labelIcon, interactive: false }).addTo(mapaLeaflet);
+    medicaoPts.push({ marker: labelMarker });
+
+    // Centralizar mapa nos dois pontos
+    mapaLeaflet.fitBounds([llA, llB], { padding: [60, 60] });
+  }
+}
+
+function limparLinhaMapa() {
+  if (medicaoLinha && mapaLeaflet) { mapaLeaflet.removeLayer(medicaoLinha); medicaoLinha = null; }
+  medicaoPts.forEach(p => { if (p.marker && mapaLeaflet) mapaLeaflet.removeLayer(p.marker); });
+  medicaoPts = [];
+}
+
+function limparMedicao() {
+  limparLinhaMapa();
+  const selA = document.getElementById('medirPontoA');
+  const selB = document.getElementById('medirPontoB');
+  if (selA) selA.value = '';
+  if (selB) selB.value = '';
+  const res = document.getElementById('measureResult');
+  if (res) res.classList.remove('visible');
+  // Também limpar modo clique
+  if (medicaoMapaAtiva) toggleMedicaoMapa();
+}
+
+// Modo clique no mapa (extra — para pontos fora da lista)
+function toggleMedicaoMapa() {
+  medicaoMapaAtiva = !medicaoMapaAtiva;
+  const btn = document.getElementById('btnMapClick');
+  if (!btn) return;
+  if (medicaoMapaAtiva) {
+    btn.classList.add('ativo');
+    btn.textContent = '⏹ Parar clique';
+    limparLinhaMapa();
+    document.getElementById('measureResult').classList.remove('visible');
+    if (mapaLeaflet) mapaLeaflet.on('click', onMapClick);
+    toast('Toque em 2 pontos no mapa para medir');
+  } else {
+    btn.classList.remove('ativo');
+    btn.textContent = '🖱️ Medir no mapa';
+    if (mapaLeaflet) mapaLeaflet.off('click', onMapClick);
+  }
+}
+
+let mapClickPts = [];
+function onMapClick(e) {
+  if (!medicaoMapaAtiva) return;
+  const ptIcon = L.divIcon({
+    className: '',
+    html: `<div style="width:12px;height:12px;background:#fff;border:2.5px solid #64ABDE;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,0.5)"></div>`,
+    iconSize: [12,12], iconAnchor: [6,6]
+  });
+  const m = L.marker(e.latlng, { icon: ptIcon }).addTo(mapaLeaflet);
+  mapClickPts.push({ ll: e.latlng, marker: m });
+  medicaoPts.push({ marker: m });
+
+  if (mapClickPts.length === 2) {
+    const dist = calcDist(mapClickPts[0].ll, mapClickPts[1].ll);
+    limparLinhaMapa();
+    mapClickPts.forEach(p => p.marker && mapaLeaflet.removeLayer(p.marker));
+
+    const llA = [mapClickPts[0].ll.lat, mapClickPts[0].ll.lng];
+    const llB = [mapClickPts[1].ll.lat, mapClickPts[1].ll.lng];
+    medicaoLinha = L.polyline([llA, llB], { color:'#fff', weight:2.5, dashArray:'10 6', opacity:0.9 }).addTo(mapaLeaflet);
+    const mid = [(llA[0]+llB[0])/2, (llA[1]+llB[1])/2];
+    const lbl = L.divIcon({ className:'', html:`<div style="background:#1D3140;color:#64ABDE;border:1.5px solid #64ABDE;border-radius:6px;padding:3px 8px;font-size:0.72rem;font-weight:800;white-space:nowrap">${formatDist(dist)}</div>`, iconAnchor:[40,12] });
+    const lm = L.marker(mid, {icon:lbl, interactive:false}).addTo(mapaLeaflet);
+    medicaoPts.push({ marker: lm });
+
+    document.getElementById('measureDist').textContent = formatDist(dist);
+    document.getElementById('measurePts').textContent  = 'Medição livre no mapa';
+    document.getElementById('measureResult').classList.add('visible');
+
+    mapClickPts = [];
+    toggleMedicaoMapa(); // desligar após 2 cliques
+  } else {
+    toast('Agora toque no 2º ponto');
+  }
 }
 
 function renderMapa() {
