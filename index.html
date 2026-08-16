@@ -7,6 +7,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>ON Engenharia · Campo</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
   :root {
     --azul-escuro: #1D3140;
@@ -456,6 +458,73 @@
     font-size: 0.73rem; padding: 5px; display: none; font-weight: 700;
   }
   .offline-bar.show { display: block; }
+
+  /* ── MAPA ── */
+  #map {
+    width: 100%;
+    height: calc(100vh - 240px);
+    min-height: 300px;
+    z-index: 1;
+  }
+  .mapa-header {
+    padding: 12px 14px 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .mapa-header h3 {
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--azul-eletrico);
+    font-weight: 700;
+  }
+  .mapa-stats {
+    display: flex;
+    gap: 8px;
+    padding: 0 14px 10px;
+    flex-wrap: wrap;
+  }
+  .mapa-stat {
+    background: var(--azul-card);
+    border: 1px solid rgba(100,171,222,0.15);
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-size: 0.75rem;
+    color: var(--cinza-texto);
+    font-weight: 600;
+  }
+  .mapa-stat b { color: var(--azul-eletrico); font-size: 1rem; display: block; margin-bottom: 1px; }
+  .mapa-empty-map {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: calc(100vh - 240px);
+    color: var(--cinza-texto);
+    font-size: 0.88rem;
+    gap: 10px;
+    opacity: 0.6;
+  }
+  .mapa-empty-map .icon { font-size: 3rem; }
+  .leaflet-popup-content-wrapper {
+    background: var(--azul-card) !important;
+    color: var(--branco) !important;
+    border: 1px solid rgba(100,171,222,0.3) !important;
+    border-radius: 10px !important;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4) !important;
+  }
+  .leaflet-popup-tip { background: var(--azul-card) !important; }
+  .leaflet-popup-content { margin: 12px 14px !important; font-size: 0.82rem !important; line-height: 1.6 !important; }
+  .popup-id { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 1.5px; color: var(--azul-eletrico); font-weight: 700; }
+  .popup-nome { font-size: 0.95rem; font-weight: 800; color: var(--branco); margin: 2px 0 4px; }
+  .popup-cat { font-size: 0.72rem; color: var(--cinza-texto); }
+  .popup-desc { font-size: 0.78rem; color: rgba(255,255,255,0.7); margin-top: 6px; max-width: 200px; }
+  .popup-meta { margin-top: 6px; font-size: 0.7rem; color: var(--cinza-texto); }
+  .popup-link { display:inline-block; margin-top:8px; color: var(--azul-eletrico); font-size:0.75rem; font-weight:700; text-decoration:none; }
+
 </style>
 </head>
 <body>
@@ -496,8 +565,6 @@
       <input type="text" id="novoCliente" placeholder="Ex: Prefeitura de Carazinho">
       <label>Nome do Projeto</label>
       <input type="text" id="novoProjeto" placeholder="Ex: Rede de Distribuição — Fase 1">
-      <label>Responsável Técnico</label>
-      <input type="text" id="novoResponsavel" placeholder="Ex: Eng. João Silva">
       <button class="btn btn-primary" onclick="criarProjeto()">🚀 &nbsp;Criar e Iniciar Projeto</button>
     </div>
   </div>
@@ -528,6 +595,9 @@
     </button>
     <button onclick="showPage('lista', this)">
       <span class="nav-icon">📋</span>Registros
+    </button>
+    <button onclick="showPage('mapa', this)">
+      <span class="nav-icon">🗺️</span>Mapa
     </button>
     <button onclick="showPage('exportar', this)">
       <span class="nav-icon">📦</span>Exportar
@@ -602,6 +672,16 @@
   <!-- LISTA -->
   <div class="page" id="page-lista">
     <div id="listaContent"></div>
+  </div>
+
+  <!-- MAPA -->
+  <div class="page" id="page-mapa">
+    <div class="mapa-header">
+      <h3>🗺️ Visão Geral — Pontos Coletados</h3>
+      <button class="btn btn-secondary" style="font-size:0.75rem;padding:6px 12px" onclick="renderMapa()">🔄 Atualizar</button>
+    </div>
+    <div class="mapa-stats" id="mapaStats"></div>
+    <div id="mapaConteudo"></div>
   </div>
 
   <!-- EXPORTAR -->
@@ -700,7 +780,6 @@ function renderProjetos() {
         <div class="proj-nome">${p.nome}</div>
         <div class="proj-meta">
           📍 ${nPontos} ponto${nPontos!==1?'s':''}
-          ${p.responsavel ? ' &nbsp;·&nbsp; 👷 ' + p.responsavel : ''}
           &nbsp;·&nbsp; 🗓️ ${p.criadoEm}
         </div>
       </div>
@@ -714,19 +793,17 @@ function renderProjetos() {
 function criarProjeto() {
   const cliente = document.getElementById('novoCliente').value.trim();
   const nome    = document.getElementById('novoProjeto').value.trim();
-  const resp    = document.getElementById('novoResponsavel').value.trim();
   if (!cliente) { toast('Informe o nome do cliente', true); return; }
   if (!nome)    { toast('Informe o nome do projeto', true); return; }
   const proj = {
     id: 'PRJ' + Date.now(),
-    cliente, nome, responsavel: resp,
+    cliente, nome,
     criadoEm: new Date().toLocaleString('pt-BR')
   };
   projetos.push(proj);
   salvarProjetos();
   document.getElementById('novoCliente').value = '';
   document.getElementById('novoProjeto').value = '';
-  document.getElementById('novoResponsavel').value = '';
   abrirProjeto(projetos.length - 1);
 }
 
@@ -760,6 +837,8 @@ function excluirProjeto(i) {
 }
 
 // ══════════════ NAV ══════════════
+let mapaLeaflet = null;
+
 function showPage(id, btn) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
@@ -767,6 +846,91 @@ function showPage(id, btn) {
   if (btn) btn.classList.add('active');
   if (id === 'lista') renderLista();
   if (id === 'exportar') renderExportPreview();
+  if (id === 'mapa') renderMapa();
+}
+
+function renderMapa() {
+  const statsEl   = document.getElementById('mapaStats');
+  const conteudo  = document.getElementById('mapaConteudo');
+
+  // Stats
+  const nFotos  = pontos.reduce((s, p) => s + p.fotos.length, 0);
+  const nAudios = pontos.reduce((s, p) => s + p.audios.length, 0);
+  const cats    = [...new Set(pontos.map(p => p.categoria))];
+  statsEl.innerHTML = `
+    <div class="mapa-stat"><b>${pontos.length}</b>Pontos</div>
+    <div class="mapa-stat"><b>${nFotos}</b>Fotos</div>
+    <div class="mapa-stat"><b>${nAudios}</b>Áudios</div>
+    <div class="mapa-stat"><b>${cats.length}</b>Categori${cats.length===1?'a':'as'}</div>
+  `;
+
+  if (!pontos.length) {
+    conteudo.innerHTML = `<div class="mapa-empty-map"><div class="icon">🗺️</div><p>Nenhum ponto coletado ainda.</p></div>`;
+    if (mapaLeaflet) { mapaLeaflet.remove(); mapaLeaflet = null; }
+    return;
+  }
+
+  // Montar o mapa
+  conteudo.innerHTML = '<div id="map"></div>';
+
+  // Destruir mapa anterior se existir
+  if (mapaLeaflet) { mapaLeaflet.remove(); mapaLeaflet = null; }
+
+  // Inicializar Leaflet
+  const centro = [pontos[0].coords.lat, pontos[0].coords.lng];
+  mapaLeaflet = L.map('map', { zoomControl: true }).setView(centro, 15);
+
+  // Tile layer OpenStreetMap (gratuito)
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap',
+    maxZoom: 19
+  }).addTo(mapaLeaflet);
+
+  // Ícone personalizado ON azul
+  const iconeON = L.divIcon({
+    className: '',
+    html: `<div style="
+      width:32px;height:32px;
+      background:#64ABDE;
+      border:3px solid #1D3140;
+      border-radius:50% 50% 50% 0;
+      transform:rotate(-45deg);
+      box-shadow:0 2px 8px rgba(0,0,0,0.4);
+    "></div>`,
+    iconSize: [32, 32],
+    iconAnchor: [16, 32],
+    popupAnchor: [0, -34]
+  });
+
+  const bounds = [];
+
+  pontos.forEach(p => {
+    const ll = [p.coords.lat, p.coords.lng];
+    bounds.push(ll);
+
+    const popup = `
+      <div class="popup-id">${p.id} · ${p.categoria}</div>
+      <div class="popup-nome">${p.nome}</div>
+      ${p.descricao ? `<div class="popup-desc">${p.descricao.substring(0,120)}${p.descricao.length>120?'…':''}</div>` : ''}
+      <div class="popup-meta">
+        📸 ${p.fotos.length} foto${p.fotos.length!==1?'s':''} &nbsp;·&nbsp;
+        🎙️ ${p.audios.length} áudio${p.audios.length!==1?'s':''}<br>
+        🕐 ${p.dataFormatada}
+      </div>
+      <a class="popup-link" href="https://www.google.com/maps?q=${p.coords.lat},${p.coords.lng}" target="_blank">📍 Abrir no Google Maps</a>
+    `;
+
+    L.marker(ll, { icon: iconeON })
+      .addTo(mapaLeaflet)
+      .bindPopup(popup, { maxWidth: 240 });
+  });
+
+  // Ajustar zoom para mostrar todos os pontos
+  if (bounds.length === 1) {
+    mapaLeaflet.setView(bounds[0], 16);
+  } else {
+    mapaLeaflet.fitBounds(bounds, { padding: [40, 40] });
+  }
 }
 
 function atualizarContador() {
@@ -1154,7 +1318,8 @@ async function exportarZIP() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `on_campo_${new Date().toISOString().slice(0,10)}.zip`;
+    const slug = projetoAtual ? projetoAtual.cliente.replace(/[^a-zA-Z0-9À-ú]/g,'_').substring(0,30) + '_' + projetoAtual.nome.replace(/[^a-zA-Z0-9À-ú]/g,'_').substring(0,30) : 'campo';
+    a.download = `ON_${slug}_${new Date().toISOString().slice(0,10)}.zip`;
     a.click();
     URL.revokeObjectURL(url);
     toast('✅ ZIP com relatório e KML baixado!');
@@ -1170,7 +1335,8 @@ function exportarJSON() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `on_dados_${new Date().toISOString().slice(0,10)}.json`;
+  const slugJ = projetoAtual ? projetoAtual.cliente.replace(/[^a-zA-Z0-9À-ú]/g,'_').substring(0,30) + '_' + projetoAtual.nome.replace(/[^a-zA-Z0-9À-ú]/g,'_').substring(0,30) : 'campo';
+  a.download = `ON_${slugJ}_${new Date().toISOString().slice(0,10)}.json`;
   a.click();
   toast('JSON exportado!');
 }
