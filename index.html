@@ -1601,6 +1601,15 @@ async function exportarZIP(modo = 'baixar') {
   if (btn2) btn2.disabled = true;
   await new Promise(r => setTimeout(r, 60));
   try {
+    // Pré-carregar TODOS os arquivos do IndexedDB de uma vez (evita múltiplos acessos)
+    let todosArquivos = {};
+    try {
+      const arqs = await dbGetAll('arquivos');
+      arqs.forEach(a => { todosArquivos[a.id] = a.dataUrl; });
+    } catch(e) {
+      console.warn('Não foi possível carregar arquivos:', e);
+    }
+
     const zip  = new JSZip();
     const root = zip.folder('campo_on_export');
 
@@ -1620,23 +1629,36 @@ async function exportarZIP(modo = 'baixar') {
     for (const p of pontos) {
       const slug = p.ptNum + '_' + p.nome.replace(/[^a-zA-Z0-9]/g,'_');
       const pp   = pasta.folder(slug);
-      const nF   = p.fotoNames?p.fotoNames.length:0, nA = p.audioMetas?p.audioMetas.length:0;
+      const nF   = p.fotoNames ? p.fotoNames.length : 0;
+      const nA   = p.audioMetas ? p.audioMetas.length : 0;
       let info   = `ON ENGENHARIA\n${'─'.repeat(40)}\nID: ${p.ptNum}\nNome: ${p.nome}\nCategoria: ${p.categoria}\nData: ${p.dataFormatada}\nLatitude: ${p.coords.lat}\nLongitude: ${p.coords.lng}\nMaps: https://www.google.com/maps?q=${p.coords.lat},${p.coords.lng}\n\nDESCRIÇÃO:\n${p.descricao||'(sem descrição)'}\n`;
       pp.file('info.txt', info);
 
-      // Buscar arquivos do IndexedDB
+      // Buscar arquivos do mapa pré-carregado
       if (nF) {
         const fp = pp.folder('fotos');
         for (const name of p.fotoNames) {
-          const arq = await dbGet('arquivos', p.id + '_' + name);
-          if (arq && arq.dataUrl) fp.file(name, arq.dataUrl.split(',')[1], { base64: true });
+          const chave = p.id + '_' + name;
+          const dataUrl = todosArquivos[chave];
+          if (dataUrl) {
+            try {
+              const b64 = dataUrl.split(',')[1];
+              if (b64) fp.file(name, b64, { base64: true });
+            } catch(e) { console.warn('Erro ao adicionar foto:', name, e); }
+          }
         }
       }
       if (nA) {
         const ap = pp.folder('audios');
         for (const a of p.audioMetas) {
-          const arq = await dbGet('arquivos', p.id + '_' + a.name);
-          if (arq && arq.dataUrl) ap.file(a.name, arq.dataUrl.split(',')[1], { base64: true });
+          const chave = p.id + '_' + a.name;
+          const dataUrl = todosArquivos[chave];
+          if (dataUrl) {
+            try {
+              const b64 = dataUrl.split(',')[1];
+              if (b64) ap.file(a.name, b64, { base64: true });
+            } catch(e) { console.warn('Erro ao adicionar audio:', a.name, e); }
+          }
         }
       }
     }
