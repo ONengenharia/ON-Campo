@@ -1670,12 +1670,25 @@ async function exportarZIP(modo = 'baixar') {
     if (modo === 'compartilhar' && navigator.share && navigator.canShare) {
       const file = new File([blob], fname, { type: 'application/zip' });
       if (navigator.canShare({ files: [file] })) {
-        await navigator.share({
-          files: [file],
-          title: `ON Engenharia — ${projetoAtual?.nome || 'Campo'}`,
-          text: `Relatório de campo: ${pontos.length} ponto${pontos.length!==1?'s':''}`
-        });
-        toast('✅ Compartilhamento aberto!');
+        try {
+          await navigator.share({
+            files: [file],
+            title: `ON Engenharia — ${projetoAtual?.nome || 'Campo'}`,
+            text: `Relatório de campo: ${pontos.length} ponto${pontos.length!==1?'s':''}`
+          });
+          toast('✅ Compartilhamento aberto!');
+        } catch(shareErr) {
+          if (shareErr.name === 'AbortError') {
+            // Usuário cancelou o compartilhamento — não faz nada
+          } else {
+            // Muitos navegadores bloqueiam compartilhar .zip via Web Share (ex: "Permission denied").
+            // Nesse caso caímos para o download normal.
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = fname; a.click();
+            URL.revokeObjectURL(url);
+            toast('⚠️ Este navegador não permite compartilhar .zip — ZIP baixado. Anexe o arquivo manualmente no WhatsApp.');
+          }
+        }
       } else {
         // Fallback: baixar normalmente
         const url = URL.createObjectURL(blob);
