@@ -1,0 +1,19 @@
+{
+  "name": "ON Engenharia · Campo",
+  "short_name": "ON Campo",
+  "description": "Coleta de coordenadas, fotos e áudio em campo — funciona offline",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#1D3140",
+  "theme_color": "#1D3140",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
