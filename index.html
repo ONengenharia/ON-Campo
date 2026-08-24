@@ -1591,6 +1591,15 @@ function gerarKML() {
   return kml;
 }
 
+function dataUrlToFile(dataUrl, filename, mime) {
+  const b64 = dataUrl.split(',')[1];
+  if (!b64) return null;
+  const bin = atob(b64);
+  const arr = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return new File([arr], filename, { type: mime });
+}
+
 async function exportarZIP(modo = 'baixar') {
   if (!pontos.length) { toast('Nenhum ponto para exportar', true); return; }
   const btn  = document.getElementById(modo === 'compartilhar' ? 'btnShare' : 'btnExport');
@@ -1668,33 +1677,47 @@ async function exportarZIP(modo = 'baixar') {
     const fname = `ON_${slug}_${new Date().toISOString().slice(0,10)}.zip`;
 
     if (modo === 'compartilhar' && navigator.share && navigator.canShare) {
-      const file = new File([blob], fname, { type: 'application/zip' });
-      if (navigator.canShare({ files: [file] })) {
+      // .zip não é um tipo de arquivo permitido pela Web Share API na maioria dos
+      // navegadores (Chrome/Android bloqueia compartilhamento de .zip). Por isso,
+      // compartilhamos o relatório + fotos + áudios individualmente — esses tipos
+      // (texto, imagem, áudio) são suportados e abrem a folha de compartilhamento
+      // nativa (WhatsApp, Drive, E-mail...). O ZIP completo com dados.json e KML
+      // continua disponível pelo botão "Baixar ZIP".
+      const shareFiles = [new File([gerarRelatorio()], 'relatorio_campo.txt', { type: 'text/plain' })];
+      for (const p of pontos) {
+        for (const name of (p.fotoNames || [])) {
+          const dataUrl = todosArquivos[p.id + '_' + name];
+          const f = dataUrl ? dataUrlToFile(dataUrl, name, 'image/jpeg') : null;
+          if (f) shareFiles.push(f);
+        }
+        for (const a of (p.audioMetas || [])) {
+          const dataUrl = todosArquivos[p.id + '_' + a.name];
+          const f = dataUrl ? dataUrlToFile(dataUrl, a.name, 'audio/webm') : null;
+          if (f) shareFiles.push(f);
+        }
+      }
+
+      let compartilhado = false;
+      if (navigator.canShare({ files: shareFiles })) {
         try {
           await navigator.share({
-            files: [file],
+            files: shareFiles,
             title: `ON Engenharia — ${projetoAtual?.nome || 'Campo'}`,
             text: `Relatório de campo: ${pontos.length} ponto${pontos.length!==1?'s':''}`
           });
           toast('✅ Compartilhamento aberto!');
+          compartilhado = true;
         } catch(shareErr) {
-          if (shareErr.name === 'AbortError') {
-            // Usuário cancelou o compartilhamento — não faz nada
-          } else {
-            // Muitos navegadores bloqueiam compartilhar .zip via Web Share (ex: "Permission denied").
-            // Nesse caso caímos para o download normal.
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a'); a.href = url; a.download = fname; a.click();
-            URL.revokeObjectURL(url);
-            toast('⚠️ Este navegador não permite compartilhar .zip — ZIP baixado. Anexe o arquivo manualmente no WhatsApp.');
-          }
+          if (shareErr.name === 'AbortError') compartilhado = true; // usuário cancelou — não baixa nada
         }
-      } else {
-        // Fallback: baixar normalmente
+      }
+
+      if (!compartilhado) {
+        // Fallback: navegador não suporta compartilhar esses arquivos — baixa o ZIP completo
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a'); a.href = url; a.download = fname; a.click();
         URL.revokeObjectURL(url);
-        toast('⚠️ Compartilhamento não suportado — baixando normalmente');
+        toast('⚠️ Compartilhamento direto não suportado — ZIP completo baixado. Envie manualmente por WhatsApp/Drive/E-mail.');
       }
     } else {
       const url = URL.createObjectURL(blob);
