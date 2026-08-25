@@ -1681,33 +1681,31 @@ async function exportarZIP(modo = 'baixar') {
 
     if (modo === 'compartilhar' && navigator.share && navigator.canShare) {
       // .zip não é um tipo de arquivo permitido pela Web Share API na maioria dos
-      // navegadores (Chrome/Android bloqueia compartilhamento de .zip). Por isso,
-      // compartilhamos o relatório + fotos + áudios individualmente — esses tipos
-      // (texto, imagem, áudio) são suportados e abrem a folha de compartilhamento
-      // nativa (WhatsApp, Drive, E-mail...). O ZIP completo com dados.json e KML
-      // continua disponível pelo botão "Baixar ZIP".
-      const shareFiles = [new File([gerarRelatorio()], 'relatorio_campo.txt', { type: 'text/plain' })];
+      // navegadores. E apps como o WhatsApp só aceitam um lote de arquivos do MESMO
+      // tipo por vez — se misturarmos texto + imagem + áudio num único compartilhamento,
+      // o WhatsApp descarta todos os arquivos e só entrega o texto. Por isso aqui
+      // compartilhamos SOMENTE as fotos (tipo homogêneo, bem suportado por
+      // WhatsApp/Drive/E-mail), com o resumo do relatório como legenda.
+      // Áudios e o relatório completo continuam disponíveis pelo botão "Baixar ZIP".
+      const fotos = [];
       for (const p of pontos) {
         for (const name of (p.fotoNames || [])) {
           const dataUrl = todosArquivos[p.id + '_' + name];
           const f = dataUrl ? dataUrlToFile(dataUrl, name, 'image/jpeg') : null;
-          if (f) shareFiles.push(f);
-        }
-        for (const a of (p.audioMetas || [])) {
-          const dataUrl = todosArquivos[p.id + '_' + a.name];
-          const f = dataUrl ? dataUrlToFile(dataUrl, a.name, 'audio/webm') : null;
-          if (f) shareFiles.push(f);
+          if (f) fotos.push(f);
         }
       }
 
+      const shareData = {
+        title: `ON Engenharia — ${projetoAtual?.nome || 'Campo'}`,
+        text: `Relatório de campo: ${pontos.length} ponto${pontos.length!==1?'s':''}`
+      };
+      if (fotos.length) shareData.files = fotos;
+
       let compartilhado = false;
-      if (navigator.canShare({ files: shareFiles })) {
+      if (!shareData.files || navigator.canShare(shareData)) {
         try {
-          await navigator.share({
-            files: shareFiles,
-            title: `ON Engenharia — ${projetoAtual?.nome || 'Campo'}`,
-            text: `Relatório de campo: ${pontos.length} ponto${pontos.length!==1?'s':''}`
-          });
+          await navigator.share(shareData);
           toast('✅ Compartilhamento aberto!');
           compartilhado = true;
         } catch(shareErr) {
