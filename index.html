@@ -816,11 +816,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 ├── pontos_georeferenciados.kml
 └── pontos/
     └── (seus pontos aqui)</div>
-      <button class="btn btn-primary" onclick="exportarZIP('baixar')" id="btnExport" style="margin-bottom:10px">
-        📥 &nbsp;BAIXAR ZIP
-      </button>
-      <button class="btn btn-primary" onclick="exportarZIP('compartilhar')" id="btnShare" style="background:#25D366;margin-bottom:6px">
-        📤 &nbsp;COMPARTILHAR (WhatsApp / Drive...)
+      <button class="btn btn-primary" onclick="exportarZIP()" id="btnExport" style="background:#25D366;margin-bottom:6px">
+        📥📤 &nbsp;BAIXAR E COMPARTILHAR
       </button>
       <p style="text-align:center;font-size:0.73rem;color:var(--cinza-texto);margin-top:8px;line-height:1.8">
         📄 <b>relatorio_campo.txt</b> — sumário + detalhamento ponto a ponto<br>
@@ -1603,14 +1600,12 @@ function dataUrlToFile(dataUrl, filename, mime) {
   return new File([arr], filename, { type: mime });
 }
 
-async function exportarZIP(modo = 'baixar') {
+async function exportarZIP() {
   if (!pontos.length) { toast('Nenhum ponto para exportar', true); return; }
-  const btn  = document.getElementById(modo === 'compartilhar' ? 'btnShare' : 'btnExport');
-  const btn2 = document.getElementById(modo === 'compartilhar' ? 'btnExport' : 'btnShare');
+  const btn = document.getElementById('btnExport');
   const origText = btn.innerHTML;
   btn.innerHTML = '<div class="spinner"></div> &nbsp;Gerando ZIP...';
   btn.disabled  = true;
-  if (btn2) btn2.disabled = true;
   await new Promise(r => setTimeout(r, 60));
   try {
     // Pré-carregar TODOS os arquivos do IndexedDB de uma vez (evita múltiplos acessos)
@@ -1679,14 +1674,21 @@ async function exportarZIP(modo = 'baixar') {
     const slug  = projetoAtual ? projetoAtual.cliente.replace(/[^a-zA-Z0-9À-ú]/g,'_').substring(0,30) + '_' + projetoAtual.nome.replace(/[^a-zA-Z0-9À-ú]/g,'_').substring(0,30) : 'campo';
     const fname = `ON_${slug}_${new Date().toISOString().slice(0,10)}.zip`;
 
-    if (modo === 'compartilhar' && navigator.share && navigator.canShare) {
-      // .zip não é um tipo de arquivo permitido pela Web Share API na maioria dos
-      // navegadores. E apps como o WhatsApp só aceitam um lote de arquivos do MESMO
-      // tipo por vez — se misturarmos texto + imagem + áudio num único compartilhamento,
-      // o WhatsApp descarta todos os arquivos e só entrega o texto. Por isso aqui
-      // compartilhamos SOMENTE as fotos (tipo homogêneo, bem suportado por
-      // WhatsApp/Drive/E-mail), com o resumo do relatório como legenda.
-      // Áudios e o relatório completo continuam disponíveis pelo botão "Baixar ZIP".
+    // 1) Baixa sempre o ZIP completo — backup local com dados.json, KML, fotos e áudios
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = fname; a.click();
+    URL.revokeObjectURL(url);
+
+    // 2) Abre a folha de compartilhamento nativa (WhatsApp/Drive/E-mail), se disponível.
+    // .zip não é um tipo de arquivo permitido pela Web Share API na maioria dos
+    // navegadores. E apps como o WhatsApp só aceitam um lote de arquivos do MESMO
+    // tipo por vez — se misturarmos texto + imagem + áudio num único compartilhamento,
+    // o WhatsApp descarta todos os arquivos e só entrega o texto. Por isso aqui
+    // compartilhamos SOMENTE as fotos (tipo homogêneo, bem suportado por
+    // WhatsApp/Drive/E-mail), com o resumo do relatório como legenda. Áudios e o
+    // relatório completo já foram para o ZIP baixado no passo 1.
+    let compartilhado = false;
+    if (navigator.share) {
       const fotos = [];
       for (const p of pontos) {
         for (const name of (p.fotoNames || [])) {
@@ -1702,37 +1704,23 @@ async function exportarZIP(modo = 'baixar') {
       };
       if (fotos.length) shareData.files = fotos;
 
-      let compartilhado = false;
-      if (!shareData.files || navigator.canShare(shareData)) {
+      if (!shareData.files || !navigator.canShare || navigator.canShare(shareData)) {
         try {
           await navigator.share(shareData);
-          toast('✅ Compartilhamento aberto!');
           compartilhado = true;
         } catch(shareErr) {
-          if (shareErr.name === 'AbortError') compartilhado = true; // usuário cancelou — não baixa nada
+          // AbortError (usuário cancelou) ou não suportado — tudo bem, o ZIP já foi baixado
         }
       }
-
-      if (!compartilhado) {
-        // Fallback: navegador não suporta compartilhar esses arquivos — baixa o ZIP completo
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a'); a.href = url; a.download = fname; a.click();
-        URL.revokeObjectURL(url);
-        toast('⚠️ Compartilhamento direto não suportado — ZIP completo baixado. Envie manualmente por WhatsApp/Drive/E-mail.');
-      }
-    } else {
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a'); a.href = url; a.download = fname; a.click();
-      URL.revokeObjectURL(url);
-      toast('✅ ZIP baixado!');
     }
+
+    toast(compartilhado ? '✅ ZIP baixado e compartilhamento aberto!' : '✅ ZIP baixado!');
   } catch(e) {
     toast('Erro ao gerar ZIP: ' + e.message, true);
     console.error(e);
   }
   btn.innerHTML = origText;
   btn.disabled  = false;
-  if (btn2) btn2.disabled = false;
 }
 
 async function exportarJSON() {
