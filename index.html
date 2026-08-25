@@ -317,6 +317,11 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     margin-bottom: 8px;
   }
   #page-novo textarea { min-height: 56px; }
+  #page-novo .btn { padding: 8px 14px; font-size: 0.78rem; gap: 6px; }
+  #page-novo .btn-primary { padding: 10px; font-size: 0.85rem; }
+  #page-novo .add-photo-btn { font-size: 1.1rem; }
+  #page-novo .add-photo-btn span { font-size: 0.58rem; }
+  #page-novo .rec-timer { font-size: 0.95rem; }
 
   /* ── BUTTONS ── */
   .btn {
@@ -731,17 +736,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       <h3>📝 Dados do Ponto</h3>
       <label>Nome / Identificação</label>
       <input type="text" id="ptNome" placeholder="Ex: PT-001 / Poste KM 12 / Torre A">
-      <label>Categoria</label>
-      <select id="ptCategoria">
-        <option>Inspeção</option>
-        <option>Rede de Distribuição</option>
-        <option>Subestação</option>
-        <option>Energia Solar</option>
-        <option>Loteamento Urbano</option>
-        <option>Ocorrência</option>
-        <option>Estrutura</option>
-        <option>Outro</option>
-      </select>
       <label>Descrição / Observações</label>
       <textarea id="ptDesc" placeholder="Descreva o ponto: condições, medições, anomalias, referências..."></textarea>
     </div>
@@ -1230,7 +1224,7 @@ async function salvarPonto() {
     projId:       projetoAtual.id,
     ptNum:        'PT' + String(pontos.length + 1).padStart(3,'0'),
     nome,
-    categoria:    document.getElementById('ptCategoria').value,
+    categoria:    'Geral',
     descricao:    document.getElementById('ptDesc').value,
     coords:       { ...currentCoords },
     fotoNames:    currentPhotos.map(f => f.name),
