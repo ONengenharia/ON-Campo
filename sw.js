@@ -1,6 +1,11 @@
 // Service Worker do ON Campo — faz o app abrir mesmo sem internet.
-// Estratégia: stale-while-revalidate (serve do cache na hora, atualiza em segundo plano).
-const CACHE_NAME = 'on-campo-v1';
+// Estratégia:
+//  - Arquivos do próprio app (HTML/manifest): network-first — sempre busca a
+//    versão mais nova quando há internet, e só usa o cache se estiver offline.
+//    Assim, uma atualização aparece na hora em vez de precisar reabrir 2x.
+//  - Arquivos externos (Leaflet via CDN): cache-first — raramente mudam, então
+//    prioriza velocidade e não depende da CDN estar sempre no ar.
+const CACHE_NAME = 'on-campo-v2';
 const ASSETS = [
   './',
   './index.html',
@@ -32,9 +37,12 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
 
-  event.respondWith(
-    caches.match(event.request).then((cached) => {
-      const network = fetch(event.request)
+  const isSameOrigin = new URL(event.request.url).origin === self.location.origin;
+
+  if (isSameOrigin) {
+    // Network-first: tenta buscar a versão mais nova; só cai pro cache se offline.
+    event.respondWith(
+      fetch(event.request)
         .then((response) => {
           if (response && response.ok) {
             const clone = response.clone();
@@ -42,10 +50,23 @@ self.addEventListener('fetch', (event) => {
           }
           return response;
         })
-        .catch(() => cached);
-
-      // Navegação (abrir o app): serve o cache na hora se existir, sem esperar a rede.
-      return cached || network;
-    })
-  );
+        .catch(() => caches.match(event.request))
+    );
+  } else {
+    // Cache-first: serve na hora, atualiza em segundo plano.
+    event.respondWith(
+      caches.match(event.request).then((cached) => {
+        const network = fetch(event.request)
+          .then((response) => {
+            if (response && response.ok) {
+              const clone = response.clone();
+              caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+            }
+            return response;
+          })
+          .catch(() => cached);
+        return cached || network;
+      })
+    );
+  }
 });
