@@ -826,13 +826,16 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 ├── pontos_georeferenciados.kml
 └── pontos/
     └── (seus pontos aqui)</div>
-      <button class="btn btn-primary" onclick="exportarZIP()" id="btnExport" style="background:#25D366;margin-bottom:6px">
-        📥📤 &nbsp;BAIXAR E COMPARTILHAR
+      <button class="btn btn-primary" onclick="exportarZIP()" id="btnExport" style="margin-bottom:6px">
+        📥 &nbsp;BAIXAR ZIP
       </button>
       <p style="text-align:center;font-size:0.73rem;color:var(--cinza-texto);margin-top:8px;line-height:1.8">
         📄 <b>relatorio_campo.txt</b> — sumário + detalhamento ponto a ponto<br>
         🗺️ <b>pontos_georeferenciados.kml</b> — Google Earth / Maps<br>
         📦 <b>dados.json</b> + fotos e áudios por ponto
+      </p>
+      <p style="text-align:center;font-size:0.73rem;color:var(--azul-eletrico);margin-top:10px;line-height:1.7;background:rgba(100,171,222,0.08);border-radius:8px;padding:10px">
+        📲 Pra enviar pro escritório pelo WhatsApp: abra o WhatsApp → anexar (📎) → <b>Documento</b> → escolha o ZIP baixado.
       </p>
     </div>
     <div class="card">
@@ -1601,23 +1604,6 @@ function gerarKML() {
   return kml;
 }
 
-function gerarResumoCompartilhamento() {
-  let txt = `ON ENGENHARIA — ${projetoAtual.nome}\nCliente: ${projetoAtual.cliente}\n${pontos.length} ponto${pontos.length!==1?'s':''} registrado${pontos.length!==1?'s':''}\n`;
-  pontos.forEach((p) => {
-    txt += `\n${'─'.repeat(30)}\n${p.ptNum} — ${p.nome}\nCategoria: ${p.categoria}\nData: ${p.dataFormatada}\nCoordenadas: ${p.coords.lat.toFixed(6)}, ${p.coords.lng.toFixed(6)}\nMaps: https://www.google.com/maps?q=${p.coords.lat},${p.coords.lng}\nDescrição: ${p.descricao || '(sem descrição)'}\n`;
-  });
-  return txt;
-}
-
-function dataUrlToFile(dataUrl, filename, mime) {
-  const b64 = dataUrl.split(',')[1];
-  if (!b64) return null;
-  const bin = atob(b64);
-  const arr = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-  return new File([arr], filename, { type: mime });
-}
-
 async function exportarZIP() {
   if (!pontos.length) { toast('Nenhum ponto para exportar', true); return; }
   const btn = document.getElementById('btnExport');
@@ -1692,47 +1678,15 @@ async function exportarZIP() {
     const slug  = projetoAtual ? projetoAtual.cliente.replace(/[^a-zA-Z0-9À-ú]/g,'_').substring(0,30) + '_' + projetoAtual.nome.replace(/[^a-zA-Z0-9À-ú]/g,'_').substring(0,30) : 'campo';
     const fname = `ON_${slug}_${new Date().toISOString().slice(0,10)}.zip`;
 
-    // 1) Baixa sempre o ZIP completo — backup local com dados.json, KML, fotos e áudios
+    // Baixa o ZIP completo — organizado por ponto, com fotos, áudios, KML e JSON.
+    // .zip não é um tipo de arquivo permitido pela Web Share API dos navegadores,
+    // então não dá pra abrir o WhatsApp com ele já anexado automaticamente. Pra
+    // enviar pro escritório: anexar manualmente como Documento no WhatsApp.
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href = url; a.download = fname; a.click();
     URL.revokeObjectURL(url);
 
-    // 2) Abre a folha de compartilhamento nativa (WhatsApp/Drive/E-mail), se disponível.
-    // .zip não é um tipo de arquivo permitido pela Web Share API na maioria dos
-    // navegadores. E apps como o WhatsApp só aceitam um lote de arquivos do MESMO
-    // tipo por vez — se misturarmos texto + imagem + áudio num único compartilhamento,
-    // o WhatsApp descarta todos os arquivos e só entrega o texto. Por isso aqui
-    // compartilhamos SOMENTE as fotos (tipo homogêneo, bem suportado por
-    // WhatsApp/Drive/E-mail), com o resumo do relatório como legenda. Áudios e o
-    // relatório completo já foram para o ZIP baixado no passo 1.
-    let compartilhado = false;
-    if (navigator.share) {
-      const fotos = [];
-      for (const p of pontos) {
-        for (const name of (p.fotoNames || [])) {
-          const dataUrl = todosArquivos[p.id + '_' + name];
-          const f = dataUrl ? dataUrlToFile(dataUrl, name, 'image/jpeg') : null;
-          if (f) fotos.push(f);
-        }
-      }
-
-      const shareData = {
-        title: `ON Engenharia — ${projetoAtual?.nome || 'Campo'}`,
-        text: gerarResumoCompartilhamento()
-      };
-      if (fotos.length) shareData.files = fotos;
-
-      if (!shareData.files || !navigator.canShare || navigator.canShare(shareData)) {
-        try {
-          await navigator.share(shareData);
-          compartilhado = true;
-        } catch(shareErr) {
-          // AbortError (usuário cancelou) ou não suportado — tudo bem, o ZIP já foi baixado
-        }
-      }
-    }
-
-    toast(compartilhado ? '✅ ZIP baixado e compartilhamento aberto!' : '✅ ZIP baixado!');
+    toast('✅ ZIP baixado!');
   } catch(e) {
     toast('Erro ao gerar ZIP: ' + e.message, true);
     console.error(e);
