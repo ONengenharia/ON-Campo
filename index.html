@@ -308,6 +308,16 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   textarea { resize: vertical; min-height: 80px; }
   ::placeholder { color: rgba(139,175,200,0.5); }
 
+  /* ── PÁGINA NOVO PONTO (compacta) ── */
+  #page-novo .card { margin: 10px 12px 0; padding: 12px; }
+  #page-novo .card h3 { margin-bottom: 8px; }
+  #page-novo label { margin-bottom: 3px; }
+  #page-novo input[type=text], #page-novo textarea, #page-novo select {
+    padding: 8px 12px;
+    margin-bottom: 8px;
+  }
+  #page-novo textarea { min-height: 56px; }
+
   /* ── BUTTONS ── */
   .btn {
     display: inline-flex;
@@ -758,7 +768,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       <div id="audioList"></div>
     </div>
 
-    <div style="padding: 0 12px 16px">
+    <div style="padding: 10px 12px 16px">
       <button class="btn btn-primary" id="btnSalvarPonto" onclick="salvarPonto()">💾 &nbsp;SALVAR PONTO</button>
     </div>
   </div>
@@ -1591,6 +1601,14 @@ function gerarKML() {
   return kml;
 }
 
+function gerarResumoCompartilhamento() {
+  let txt = `ON ENGENHARIA — ${projetoAtual.nome}\nCliente: ${projetoAtual.cliente}\n${pontos.length} ponto${pontos.length!==1?'s':''} registrado${pontos.length!==1?'s':''}\n`;
+  pontos.forEach((p) => {
+    txt += `\n${'─'.repeat(30)}\n${p.ptNum} — ${p.nome}\nCategoria: ${p.categoria}\nData: ${p.dataFormatada}\nCoordenadas: ${p.coords.lat.toFixed(6)}, ${p.coords.lng.toFixed(6)}\nMaps: https://www.google.com/maps?q=${p.coords.lat},${p.coords.lng}\nDescrição: ${p.descricao || '(sem descrição)'}\n`;
+  });
+  return txt;
+}
+
 function dataUrlToFile(dataUrl, filename, mime) {
   const b64 = dataUrl.split(',')[1];
   if (!b64) return null;
@@ -1700,7 +1718,7 @@ async function exportarZIP() {
 
       const shareData = {
         title: `ON Engenharia — ${projetoAtual?.nome || 'Campo'}`,
-        text: `Relatório de campo: ${pontos.length} ponto${pontos.length!==1?'s':''}`
+        text: gerarResumoCompartilhamento()
       };
       if (fotos.length) shareData.files = fotos;
 
