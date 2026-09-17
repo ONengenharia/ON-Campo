@@ -308,6 +308,35 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   textarea { resize: vertical; min-height: 80px; }
   ::placeholder { color: rgba(139,175,200,0.5); }
 
+  /* ── CHECKBOXES ── */
+  .check-toggle {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(100,171,222,0.08);
+    border: 1.5px solid rgba(100,171,222,0.25);
+    border-radius: 8px;
+    padding: 12px 14px;
+    cursor: pointer;
+    text-transform: none;
+    margin-bottom: 0;
+  }
+  .check-toggle input[type=checkbox] { width: 19px; height: 19px; accent-color: var(--azul-eletrico); cursor: pointer; flex-shrink: 0; }
+  .check-toggle span { font-weight: 700; font-size: 0.82rem; color: var(--branco); letter-spacing: 0.2px; }
+  .check-list { display: flex; flex-direction: column; gap: 9px; margin-bottom: 10px; }
+  .check-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    text-transform: none;
+    color: var(--cinza-texto);
+    cursor: pointer;
+    margin-bottom: 0;
+  }
+  .check-item input[type=checkbox] { width: 17px; height: 17px; accent-color: var(--azul-eletrico); cursor: pointer; flex-shrink: 0; }
+
   /* ── PÁGINA NOVO PONTO (compacta) ── */
   #page-novo .card { margin: 10px 12px 0; padding: 12px; }
   #page-novo .card h3 { margin-bottom: 8px; }
@@ -738,6 +767,61 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       <input type="text" id="ptNome" placeholder="Ex: PT-001 / Poste KM 12 / Torre A">
       <label>Descrição / Observações</label>
       <textarea id="ptDesc" placeholder="Descreva o ponto: condições, medições, anomalias, referências..."></textarea>
+      <label class="check-toggle">
+        <input type="checkbox" id="ptIsMedicao" onchange="toggleMedicaoCard()">
+        <span>⚡ Este é o Ponto de Medição de Energia</span>
+      </label>
+    </div>
+
+    <div class="card" id="medicaoCard" style="display:none">
+      <h3>⚡ Dados da Medição</h3>
+
+      <label>Classificação</label>
+      <select id="medFase" onchange="atualizarCamposFase()">
+        <option value="">Selecione...</option>
+        <option>Monofásico</option>
+        <option>Bifásico</option>
+        <option>Trifásico</option>
+        <option>Outro</option>
+      </select>
+      <input type="text" id="medFaseOutro" placeholder="Qual?" style="display:none">
+
+      <label>Tensão</label>
+      <select id="medTensao">
+        <option value="">Selecione...</option>
+        <option>220/127V</option>
+        <option>380/220V</option>
+        <option>120/240V</option>
+      </select>
+
+      <label>Tensão FN1</label>
+      <input type="text" id="medFN1" placeholder="Ex: 127V">
+      <label id="medFN2Label" style="display:none">Tensão FN2</label>
+      <input type="text" id="medFN2" placeholder="Ex: 220V" style="display:none">
+      <label id="medFN3Label" style="display:none">Tensão FN3</label>
+      <input type="text" id="medFN3" placeholder="Ex: 220V" style="display:none">
+
+      <label>Número do Medidor</label>
+      <input type="text" id="medNumeroMedidor" placeholder="Ex: 123456789">
+
+      <label>Entrada de Fornecimento</label>
+      <select id="medEntrada">
+        <option value="">Selecione...</option>
+        <option>Aérea</option>
+        <option>Subterrânea</option>
+      </select>
+
+      <label style="margin-top:6px">Fotos da Medição (marque as capturadas)</label>
+      <div class="check-list" id="medFotosChecklist">
+        <label class="check-item"><input type="checkbox" value="Panorâmica do Poste da Medição">Panorâmica do Poste da Medição</label>
+        <label class="check-item"><input type="checkbox" value="Medição Fechada">Medição Fechada</label>
+        <label class="check-item"><input type="checkbox" value="Medição Aberta">Medição Aberta</label>
+        <label class="check-item"><input type="checkbox" value="Ampla do Disjuntor de Entrada">Ampla do Disjuntor de Entrada</label>
+        <label class="check-item"><input type="checkbox" value="Aproximada do Disjuntor de Entrada">Aproximada do Disjuntor de Entrada</label>
+        <label class="check-item"><input type="checkbox" value="Medidor">Medidor</label>
+        <label class="check-item"><input type="checkbox" value="Disjuntor Geral do Agrupamento">Disjuntor Geral do Agrupamento (caso tenha)</label>
+        <label class="check-item"><input type="checkbox" value="Outros equipamentos">Outros equipamentos</label>
+      </div>
     </div>
 
     <div class="card">
@@ -1209,6 +1293,53 @@ function renderAudios() {
 }
 function removeAudio(i) { currentAudios.splice(i, 1); renderAudios(); }
 
+// ══════════════ DADOS DA MEDIÇÃO ══════════════
+function toggleMedicaoCard() {
+  const marcado = document.getElementById('ptIsMedicao').checked;
+  document.getElementById('medicaoCard').style.display = marcado ? 'block' : 'none';
+}
+function atualizarCamposFase() {
+  const fase = document.getElementById('medFase').value;
+  document.getElementById('medFaseOutro').style.display = fase === 'Outro' ? 'block' : 'none';
+  document.getElementById('medFN2Label').style.display  = (fase === 'Bifásico' || fase === 'Trifásico') ? 'block' : 'none';
+  document.getElementById('medFN2').style.display       = (fase === 'Bifásico' || fase === 'Trifásico') ? 'block' : 'none';
+  document.getElementById('medFN3Label').style.display  = fase === 'Trifásico' ? 'block' : 'none';
+  document.getElementById('medFN3').style.display       = fase === 'Trifásico' ? 'block' : 'none';
+}
+function coletarDadosMedicao() {
+  if (!document.getElementById('ptIsMedicao').checked) return null;
+  const fotosMarcadas = Array.from(document.querySelectorAll('#medFotosChecklist input:checked')).map(c => c.value);
+  return {
+    fase:           document.getElementById('medFase').value,
+    faseOutro:      document.getElementById('medFaseOutro').value,
+    tensao:         document.getElementById('medTensao').value,
+    fn1:            document.getElementById('medFN1').value,
+    fn2:            document.getElementById('medFN2').value,
+    fn3:            document.getElementById('medFN3').value,
+    numeroMedidor:  document.getElementById('medNumeroMedidor').value,
+    entrada:        document.getElementById('medEntrada').value,
+    fotos:          fotosMarcadas
+  };
+}
+function resetFormMedicao() {
+  document.getElementById('ptIsMedicao').checked = false;
+  document.getElementById('medicaoCard').style.display = 'none';
+  document.getElementById('medFase').value = '';
+  document.getElementById('medFaseOutro').value = '';
+  document.getElementById('medFaseOutro').style.display = 'none';
+  document.getElementById('medTensao').value = '';
+  document.getElementById('medFN1').value = '';
+  document.getElementById('medFN2').value = '';
+  document.getElementById('medFN3').value = '';
+  document.getElementById('medFN2Label').style.display = 'none';
+  document.getElementById('medFN2').style.display = 'none';
+  document.getElementById('medFN3Label').style.display = 'none';
+  document.getElementById('medFN3').style.display = 'none';
+  document.getElementById('medNumeroMedidor').value = '';
+  document.getElementById('medEntrada').value = '';
+  document.querySelectorAll('#medFotosChecklist input:checked').forEach(c => c.checked = false);
+}
+
 // ══════════════ SALVAR PONTO ══════════════
 async function salvarPonto() {
   const nome = document.getElementById('ptNome').value.trim();
@@ -1229,6 +1360,7 @@ async function salvarPonto() {
     coords:       { ...currentCoords },
     fotoNames:    currentPhotos.map(f => f.name),
     audioMetas:   currentAudios.map(a => ({ name: a.name, duration: a.duration })),
+    medicao:      coletarDadosMedicao(),
     criadoTs:     Date.now(),
     dataFormatada: new Date().toLocaleString('pt-BR'),
     timestamp:    new Date().toISOString()
@@ -1260,6 +1392,7 @@ async function salvarPonto() {
     document.getElementById('coordsText').textContent = 'Aguardando sinal GPS...';
     document.getElementById('mapLink').style.display  = 'none';
     document.getElementById('manualCoords').style.display = 'none';
+    resetFormMedicao();
 
     toast(`✅ ${ponto.ptNum} — ${ponto.nome} salvo!`);
   } catch(e) {
@@ -1282,7 +1415,7 @@ function renderLista() {
     const nF = p.fotoNames ? p.fotoNames.length : 0;
     const nA = p.audioMetas ? p.audioMetas.length : 0;
     return `<div class="ponto-card">
-      <div class="ponto-id">${p.ptNum} · ${p.categoria}</div>
+      <div class="ponto-id">${p.ptNum}${p.medicao ? ' · ⚡ Medição' : ''}</div>
       <div class="ponto-nome">${p.nome}</div>
       <div class="ponto-coords">📍 ${p.coords.lat.toFixed(6)}, ${p.coords.lng.toFixed(6)}</div>
       ${p.descricao ? `<div class="ponto-desc">${p.descricao.substring(0,140)}${p.descricao.length>140?'…':''}</div>` : ''}
@@ -1526,7 +1659,7 @@ function renderMapa() {
     const nF = p.fotoNames ? p.fotoNames.length : 0;
     const nA = p.audioMetas ? p.audioMetas.length : 0;
     const popup = `
-      <div class="popup-id">${p.ptNum} · ${p.categoria}</div>
+      <div class="popup-id">${p.ptNum}${p.medicao ? ' · ⚡ Medição' : ''}</div>
       <div class="popup-nome">${p.nome}</div>
       ${p.descricao ? `<div class="popup-desc">${p.descricao.substring(0,120)}${p.descricao.length>120?'…':''}</div>` : ''}
       <div class="popup-meta">📸 ${nF} foto${nF!==1?'s':''} · 🎙️ ${nA} áudio${nA!==1?'s':''}<br>🕐 ${p.dataFormatada}</div>
@@ -1558,6 +1691,21 @@ function renderExportPreview() {
   el.textContent = tree;
 }
 
+function formatarMedicao(m) {
+  if (!m) return '';
+  const fase = m.fase === 'Outro' ? `Outro (${m.faseOutro||'-'})` : (m.fase || '-');
+  let txt = `  DADOS DA MEDIÇÃO\n`;
+  txt += `  Classificação      : ${fase}\n`;
+  txt += `  Tensão             : ${m.tensao || '-'}\n`;
+  txt += `  Tensão FN1         : ${m.fn1 || '-'}\n`;
+  if (m.fn2) txt += `  Tensão FN2         : ${m.fn2}\n`;
+  if (m.fn3) txt += `  Tensão FN3         : ${m.fn3}\n`;
+  txt += `  Número do Medidor  : ${m.numeroMedidor || '-'}\n`;
+  txt += `  Entrada Fornecim.  : ${m.entrada || '-'}\n`;
+  txt += `  Fotos da Medição   : ${m.fotos && m.fotos.length ? m.fotos.join(', ') : '(nenhuma marcada)'}\n`;
+  return txt;
+}
+
 function gerarRelatorio() {
   const sep1 = '═'.repeat(60), sep2 = '─'.repeat(60);
   let rel = `${sep1}\n  ON ENGENHARIA — RELATÓRIO DE CAMPO\n${sep1}\n`;
@@ -1579,6 +1727,7 @@ function gerarRelatorio() {
     rel += `  Latitude    : ${p.coords.lat.toFixed(7)}\n  Longitude   : ${p.coords.lng.toFixed(7)}\n`;
     rel += `  Google Maps : https://www.google.com/maps?q=${p.coords.lat},${p.coords.lng}\n\n`;
     rel += `  DESCRIÇÃO\n  ${sep2.substring(0,40)}\n  ${p.descricao||'(sem descrição)'}\n\n`;
+    if (p.medicao) rel += `${formatarMedicao(p.medicao)}\n`;
     rel += `  Fotos: ${nF}  |  Áudios: ${nA}\n${sep2}\n\n`;
   });
   return rel;
@@ -1624,6 +1773,7 @@ async function exportarZIP() {
       latitude: p.coords.lat, longitude: p.coords.lng,
       google_maps: `https://www.google.com/maps?q=${p.coords.lat},${p.coords.lng}`,
       fotos: p.fotoNames||[], audios: (p.audioMetas||[]).map(a=>a.name),
+      medicao: p.medicao || null,
       data: p.dataFormatada, timestamp: p.timestamp
     })), null, 2));
 
@@ -1637,6 +1787,7 @@ async function exportarZIP() {
       const nF   = p.fotoNames ? p.fotoNames.length : 0;
       const nA   = p.audioMetas ? p.audioMetas.length : 0;
       let info   = `ON ENGENHARIA\n${'─'.repeat(40)}\nID: ${p.ptNum}\nNome: ${p.nome}\nCategoria: ${p.categoria}\nData: ${p.dataFormatada}\nLatitude: ${p.coords.lat}\nLongitude: ${p.coords.lng}\nMaps: https://www.google.com/maps?q=${p.coords.lat},${p.coords.lng}\n\nDESCRIÇÃO:\n${p.descricao||'(sem descrição)'}\n`;
+      if (p.medicao) info += `\n${formatarMedicao(p.medicao)}`;
       pp.file('info.txt', info);
 
       // Buscar arquivos do mapa pré-carregado
@@ -1669,8 +1820,10 @@ async function exportarZIP() {
     }
 
     const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
-    const slug  = projetoAtual ? projetoAtual.cliente.replace(/[^a-zA-Z0-9À-ú]/g,'_').substring(0,30) + '_' + projetoAtual.nome.replace(/[^a-zA-Z0-9À-ú]/g,'_').substring(0,30) : 'campo';
-    const fname = `ON_${slug}_${new Date().toISOString().slice(0,10)}.zip`;
+    const slug  = projetoAtual ? projetoAtual.nome.replace(/[^a-zA-Z0-9À-ú]/g,'_').substring(0,40) : 'campo';
+    const hoje  = new Date();
+    const dataZip = `${String(hoje.getDate()).padStart(2,'0')}-${String(hoje.getMonth()+1).padStart(2,'0')}-${hoje.getFullYear()}`;
+    const fname = `${slug}_${dataZip}.zip`;
 
     // Baixa o ZIP completo — organizado por ponto, com fotos, áudios, KML e JSON.
     // .zip não é um tipo de arquivo permitido pela Web Share API dos navegadores,
